@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /inquire
+
+User-agent: Yeti
+Disallow: /inquire
+
+Sitemap: https://www.//sitemap.xml
