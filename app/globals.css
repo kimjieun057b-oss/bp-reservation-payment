@@ -1,0 +1,290 @@
+@charset "UTF-8";
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Point Color */
+  --color-primary: #3e69c7;
+  /* Monochrome */
+  --color-surface: #f4f6f8;
+  --color-title:   #111827;
+  --color-body:    #4b5563;
+  --color-muted:   #9ca3af;
+  /* Breakpoint */
+  --breakpoint-pc: 1366px;
+  /* Shadow */
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    box-sizing: border-box;
+    word-break: keep-all;
+    font-family: 'Noto Sans KR', sans-serif;
+  }
+
+  html {
+    @apply text-title overflow-x-hidden;
+  }
+
+  body {
+    @apply text-title;
+  }
+
+  h1 {
+    @apply text-[2rem] font-bold;
+    @apply pc:text-[3rem];
+  }
+
+  h2 {
+    @apply text-[2rem] font-bold;
+    @apply pc:text-[3rem];
+  }
+
+  h3 {
+    @apply text-[1.5rem] font-bold;
+    @apply pc:text-[2rem];
+  }
+
+  h4 {
+    @apply text-[1rem] font-bold;
+  }
+
+  h5 {
+    @apply text-[0.9rem] font-bold;
+  }
+
+  p,
+  li {
+    @apply transition-all duration-500 text-[0.9rem] pc:text-[1rem];
+  }
+
+  a {
+    @apply cursor-pointer transition-all duration-300 text-title no-underline;
+  }
+
+  textarea {
+    @apply resize-none;
+  }
+
+  input {
+    @apply border-0 bg-transparent;
+  }
+
+  table {
+    @apply w-full border border-[#ccc] collapse;
+  }
+
+  img {
+    @apply w-full h-auto block my-auto mx-0;
+  }
+
+  button {
+    @apply border-0 bg-transparent transition-all duration-300;
+  }
+
+  article > div {
+    @apply py-20 max-w-300 my-0 mx-auto;
+    @apply pc:py-37.5 pc:px-0;
+    padding-right: 5%;
+    padding-left: 5%;
+  }
+}
+
+@layer components {
+  .display-flex {
+    @apply flex justify-between;
+  }
+
+  .display-flex-flow {
+    @apply flex justify-between flex-wrap;
+  }
+
+  .mo {
+    @apply pc:hidden;
+  }
+
+  .pc {
+    @apply hidden pc:block;
+  }
+
+  .pc-flex {
+    @apply hidden pc:flex pc:pointer-events-auto;
+  }
+
+  .black-bg {
+    @apply fixed z-20 top-0 left-0 bg-black opacity-50 w-full h-dvh;
+  }
+
+  .loading {
+    @apply w-full max-w-300 my-0 mx-auto py-25 text-center text-sm text-muted;
+  }
+
+  /* Form utilities */
+  .form-input {
+    @apply w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-title
+      bg-white placeholder:text-muted transition-colors
+      focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-body mb-1.5;
+  }
+
+  .form-help {
+    @apply text-xs text-muted mt-1;
+  }
+
+  /* 이미지 업로드 드롭존 - 비어있을 때는 점선 테두리, 이미지가 채워지면 .dropzone-filled로 실선 전환 */
+  .dropzone {
+    @apply flex flex-col items-center justify-center gap-2 rounded-lg
+      border-2 border-dashed border-gray-200 bg-surface text-center cursor-pointer
+      transition-colors hover:border-primary hover:bg-primary/5;
+  }
+
+  .dropzone-filled {
+    @apply border-solid border-gray-100 bg-white hover:bg-white hover:border-gray-100;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-white text-sm font-medium px-5 py-2.5 rounded-lg
+      hover:opacity-90 transition-colors cursor-pointer
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply bg-white border border-gray-200 text-body text-sm font-medium px-5 py-2.5
+      rounded-lg hover:bg-surface transition-colors cursor-pointer;
+  }
+
+  /* Card */
+  .card {
+    @apply bg-white rounded-lg border border-gray-100 overflow-hidden;
+  }
+
+  /* Admin 페이지 상단 타이틀 */
+  .page-title {
+    @apply text-xl font-bold text-title;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center shrink-0 text-xs font-medium px-2 py-0.5 rounded;
+  }
+
+  .badge-info {
+    @apply text-primary bg-primary/20;
+  }
+
+  .badge-success {
+    @apply text-green-700 bg-green-100;
+  }
+
+  .badge-warning {
+    @apply text-amber-700 bg-amber-100;
+  }
+
+  .badge-muted {
+    @apply text-gray-600 bg-gray-200;
+  }
+
+  .badge-danger {
+    @apply text-red-700 bg-red-100;
+  }
+
+  .badge-accent {
+    @apply text-violet-700 bg-violet-100;
+  }
+
+  /* Admin badge - 관리자 화면 전용, 포인트컬러(primary) 톤 차이 + 뉴트럴 톤으로만 상태를 구분한다.
+     예외적으로 즉시 조치가 필요한 "취소 대기"만 기존 badge-danger(경고색)를 그대로 사용한다. */
+  .badge-outline-primary {
+    @apply text-primary bg-white border border-primary;
+  }
+
+  .badge-tint-primary {
+    @apply text-primary bg-primary/25;
+  }
+
+  .badge-solid-primary {
+    @apply text-white bg-primary;
+  }
+
+  .badge-neutral-outline {
+    @apply text-gray-600 bg-white border border-gray-400;
+  }
+
+  /* Admin Sidebar - 다크 사이드바 + 좌측 포인트컬러 액센트 바로 active 상태를 표시한다.
+     보일러플레이트 공통 컴포넌트이므로 다른 프로젝트에서도 이 클래스만 재사용하면 된다. */
+  .admin-sidebar {
+    @apply bg-[#222] text-neutral-300;
+  }
+
+  .admin-nav-section-title {
+    @apply flex items-center gap-2 px-6 pt-5 pb-2 text-[11px] font-semibold text-white/50 uppercase tracking-wider;
+  }
+
+  .admin-nav-link {
+    @apply flex items-center gap-2.5 mx-3 rounded-lg border-l-2 border-transparent
+      pl-3.5 pr-3 py-2.5 text-sm text-white/50 transition-colors
+      hover:bg-white/5;
+  }
+
+  .admin-nav-link-active {
+    @apply bg-primary/50 font-semibold text-white;
+  }
+
+  .admin-nav-sublink { 
+    @apply flex items-center gap-2 mx-3 rounded-lg border-l-2 border-transparent
+      pl-3.5 pr-3 py-2 text-sm text-white/80 transition-colors
+      hover:bg-white/5 hover:text-white;
+  }
+
+  .admin-nav-sublink-active {
+    @apply bg-primary/50 text-white;
+  }
+
+  /* Admin Tab - 밑줄형 탭 (예: 카테고리/상태 필터) */
+  .admin-tab {
+    @apply cursor-pointer border-b-2 border-transparent px-1 pb-3 text-sm font-medium
+      text-muted transition-colors hover:text-body;
+  }
+
+  .admin-tab-active {
+    @apply border-primary text-title;
+  }
+
+  .admin-btn-primary {
+    @apply bg-primary text-white text-sm font-medium px-5 py-2.5 rounded-full
+      hover:opacity-90 transition-colors cursor-pointer
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .admin-btn-ghost {
+    @apply bg-white border border-gray-200 text-body text-sm font-medium px-5 py-2.5
+      rounded-full hover:bg-surface transition-colors cursor-pointer;
+  }
+
+  .admin-btn-danger {
+    @apply text-xs px-4 py-2 rounded-full bg-body text-white
+      hover:bg-[#222] transition-colors cursor-pointer
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Danger action */
+  .btn-danger {
+    @apply text-xs px-4 py-2 rounded-lg bg-body text-white
+      hover:bg-[#222] transition-colors cursor-pointer
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+}
+
+@media screen and (min-width: 1366px) {
+  article > div {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
