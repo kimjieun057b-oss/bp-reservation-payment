@@ -11,8 +11,8 @@ export default function AdminLayout({
             <AdminHeader />
             <div className="flex">
                 <SideMenu />
-                <div className="w-full min-h-screen overflow-auto bg-[#f2f2f2]">
-                    <div className="w-full max-w-350 p-20 mx-auto my-0">
+                <div className="w-full min-h-screen overflow-auto bg-surface">
+                    <div className="w-full max-w-300 p-20 mx-auto my-0">
                         {children}
                     </div>
                 </div>
