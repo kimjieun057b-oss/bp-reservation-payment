@@ -10,7 +10,7 @@ module.exports = {
                 'pc': '1366px',
             },
             colors: {
-                'primary': '#3e69c7',
+                'primary': '#12707c',
                 'surface': '#f4f6f8',
                 'title':   '#111827',
                 'body':    '#4b5563',

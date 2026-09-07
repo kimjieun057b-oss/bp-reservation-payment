@@ -2,14 +2,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
 @import "tailwindcss";
 
+@config "../tailwind.config.js";
+
 @theme {
-  /* Point Color */
-  --color-primary: #3e69c7;
-  /* Monochrome */
-  --color-surface: #f4f6f8;
-  --color-title:   #111827;
-  --color-body:    #4b5563;
-  --color-muted:   #9ca3af;
   /* Breakpoint */
   --breakpoint-pc: 1366px;
   /* Shadow */
@@ -86,7 +81,7 @@
     @apply border-0 bg-transparent transition-all duration-300;
   }
 
-  article > div {
+  section>div {
     @apply py-20 max-w-300 my-0 mx-auto;
     @apply pc:py-37.5 pc:px-0;
     padding-right: 5%;
@@ -95,26 +90,6 @@
 }
 
 @layer components {
-  .display-flex {
-    @apply flex justify-between;
-  }
-
-  .display-flex-flow {
-    @apply flex justify-between flex-wrap;
-  }
-
-  .mo {
-    @apply pc:hidden;
-  }
-
-  .pc {
-    @apply hidden pc:block;
-  }
-
-  .pc-flex {
-    @apply hidden pc:flex pc:pointer-events-auto;
-  }
-
   .black-bg {
     @apply fixed z-20 top-0 left-0 bg-black opacity-50 w-full h-dvh;
   }
@@ -123,7 +98,6 @@
     @apply w-full max-w-300 my-0 mx-auto py-25 text-center text-sm text-muted;
   }
 
-  /* Form utilities */
   .form-input {
     @apply w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-title
       bg-white placeholder:text-muted transition-colors
@@ -138,7 +112,6 @@
     @apply text-xs text-muted mt-1;
   }
 
-  /* 이미지 업로드 드롭존 - 비어있을 때는 점선 테두리, 이미지가 채워지면 .dropzone-filled로 실선 전환 */
   .dropzone {
     @apply flex flex-col items-center justify-center gap-2 rounded-lg
       border-2 border-dashed border-gray-200 bg-surface text-center cursor-pointer
@@ -199,8 +172,6 @@
     @apply text-violet-700 bg-violet-100;
   }
 
-  /* Admin badge - 관리자 화면 전용, 포인트컬러(primary) 톤 차이 + 뉴트럴 톤으로만 상태를 구분한다.
-     예외적으로 즉시 조치가 필요한 "취소 대기"만 기존 badge-danger(경고색)를 그대로 사용한다. */
   .badge-outline-primary {
     @apply text-primary bg-white border border-primary;
   }
@@ -217,8 +188,6 @@
     @apply text-gray-600 bg-white border border-gray-400;
   }
 
-  /* Admin Sidebar - 다크 사이드바 + 좌측 포인트컬러 액센트 바로 active 상태를 표시한다.
-     보일러플레이트 공통 컴포넌트이므로 다른 프로젝트에서도 이 클래스만 재사용하면 된다. */
   .admin-sidebar {
     @apply bg-[#222] text-neutral-300;
   }
@@ -247,7 +216,6 @@
     @apply bg-primary/50 text-white;
   }
 
-  /* Admin Tab - 밑줄형 탭 (예: 카테고리/상태 필터) */
   .admin-tab {
     @apply cursor-pointer border-b-2 border-transparent px-1 pb-3 text-sm font-medium
       text-muted transition-colors hover:text-body;
@@ -274,7 +242,6 @@
       disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
-  /* Danger action */
   .btn-danger {
     @apply text-xs px-4 py-2 rounded-lg bg-body text-white
       hover:bg-[#222] transition-colors cursor-pointer
@@ -283,7 +250,7 @@
 }
 
 @media screen and (min-width: 1366px) {
-  article > div {
+  section>div {
     padding-left: 0;
     padding-right: 0;
   }
