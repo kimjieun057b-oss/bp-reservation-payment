@@ -5,6 +5,7 @@ export const USER_CATEGORY : { [key: string]: { title: string; categories?: {nam
     guide: { title: "이용안내" },
     "reservation-guide": { title: "예약안내" },
     reserve: { title: "실시간예약" },
+    "my-reservations": { title: "예약조회" },
 }
 
 // 관리자 사이드바 내비게이션 - 관리자 페이지를 만들면 여기에 항목을 추가한다.

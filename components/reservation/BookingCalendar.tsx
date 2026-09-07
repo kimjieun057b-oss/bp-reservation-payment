@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { enumerateNights, toISODate } from "@/lib/reservations/pricing";
+import Toast from "@/components/ui/Toast";
 
 export interface BookingCalendarProps {
     roomTypeId?: string;
@@ -256,6 +257,7 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
     const dateCells = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
     return (
+        <>
         <div className="flex flex-col pc:flex-row gap-6">
             <div className="card p-6 flex-1">
                 {roomType && (
@@ -464,8 +466,6 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                         <span className="text-xl font-bold text-primary">{totalPrice.toLocaleString()}원</span>
                     </div>
 
-                    {submitError && <p className="text-sm text-red-400 mb-3">{submitError}</p>}
-
                     <button
                         type="button"
                         onClick={handleSubmit}
@@ -503,5 +503,7 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                 )}
             </div>
         </div>
+        <Toast vaild={submitError} setVaild={setSubmitError} />
+        </>
     );
 }

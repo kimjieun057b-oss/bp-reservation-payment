@@ -2,8 +2,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { calculateTotalPrice } from "./pricing";
 import type { Reservation } from "./types";
 
-// FR-2: 홀드 유지시간은 프로젝트별 환경설정 값으로 변경 가능해야 한다 (기본 10분, DEC-001).
-const HOLD_DURATION_MINUTES = Number(process.env.RESERVATION_HOLD_MINUTES ?? 10);
+// FR-2: 홀드 유지시간은 프로젝트별 환경설정 값으로 변경 가능해야 한다 (기본 24시간, DEC-001).
+const HOLD_DURATION_MINUTES = Number(process.env.RESERVATION_HOLD_MINUTES ?? 60 * 24);
 
 // Postgres exclusion_violation: 같은 room_id·기간에 이미 HOLD/CONFIRMED 예약이 있어 EXCLUDE 제약에 걸린 경우.
 const EXCLUSION_VIOLATION = "23P01";
