@@ -1,7 +1,23 @@
 User-agent: *
-Disallow: /inquire
+Disallow: /admin
 
 User-agent: Yeti
-Disallow: /inquire
+Disallow: /admin
 
-Sitemap: https://www.//sitemap.xml
+User-agent: GPTBot
+Allow: /
+Disallow: /admin
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /admin
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /admin
+
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /admin
+
+Sitemap: https://www.com/sitemap.xml

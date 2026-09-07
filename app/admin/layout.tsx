@@ -1,5 +1,5 @@
-import SideMenu from "@/components/common/category/SideMenu";
-import AdminHeader from "@/components/common/header/AdminHeader";
+import SideMenu from "@/components/layout/SideMenu";
+import AdminHeader from "@/components/layout/AdminHeader";
 
 export default function AdminLayout({
     children,

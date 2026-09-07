@@ -1,4 +1,4 @@
-import NomalLoginForm from "@/components/form/NomalLoginForm";
+import NomalLoginForm from "@/components/auth/NomalLoginForm";
 
 // 관리자 로그인 페이지
 export default function AdminLoginPage () {
