@@ -3,7 +3,7 @@ import NomalLoginForm from "@/components/auth/NomalLoginForm";
 // 관리자 로그인 페이지
 export default function AdminLoginPage () {
     return (
-        <article>
+        <section>
             <div>
               <div>
                 {/* <h2>ADMIN LOGIN</h2>
@@ -13,6 +13,6 @@ export default function AdminLoginPage () {
                 <NomalLoginForm/>
               </div>
             </div>
-        </article>
+        </section>
     )
 }

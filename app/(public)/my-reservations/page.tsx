@@ -3,7 +3,7 @@ import ReservationLookupForm from "@/components/reservations/ReservationLookupFo
 // 비로그인 고객용 예약 조회 페이지 - 예약자명 + 전화번호로 본인 예약을 확인한다.
 export default function Myreservation() {
     return (
-        <article>
+        <section>
             <div>
                 <div className="text-center mb-10">
                     <h2>예약 조회</h2>
@@ -13,6 +13,6 @@ export default function Myreservation() {
                     <ReservationLookupForm />
                 </div>
             </div>
-        </article>
+        </section>
     );
 }
