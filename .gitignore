@@ -48,3 +48,4 @@ next-env.d.ts
 docs/PULL_REQUEST_TEMPLATE.md
 docs/RULE.md
 docs/memo/
+docs/design/
