@@ -47,6 +47,20 @@ export function resolveNightlyPrice(date: Date, basePrice: number, rules: PriceR
     return matched.reduce((best, rule) => (rule.priority > best.priority ? rule : best)).price;
 }
 
+// 캘린더 UI에서 "성수기/주말" 뱃지를 표시하기 위한 분류. 가격 우선순위(priority)와는 무관하게
+// "이 날짜에 매칭되는 규칙 종류"만 본다 (기간 규칙이면 성수기, 요일 규칙이면 주말 — 둘 다 매칭될 수도 있다).
+export function classifyDate(date: Date, rules: PriceRule[]): { isPeak: boolean; isWeekend: boolean } {
+    const iso = toISODate(date);
+    const dayOfWeek = date.getUTCDay();
+
+    const isPeak = rules.some(
+        (rule) => rule.start_date && rule.end_date && iso >= rule.start_date && iso <= rule.end_date
+    );
+    const isWeekend = rules.some((rule) => rule.days_of_week && rule.days_of_week.includes(dayOfWeek));
+
+    return { isPeak, isWeekend };
+}
+
 export async function calculateTotalPrice(
     supabase: SupabaseClient,
     roomTypeId: string,
