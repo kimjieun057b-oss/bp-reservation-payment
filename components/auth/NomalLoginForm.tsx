@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useState } from "react"
-import Toast from "../common/Toast";
+import Toast from "../ui/Toast";
 
 export interface NomalLoginFormProps {
     admin_id : string;
