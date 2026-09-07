@@ -43,4 +43,8 @@ next-env.d.ts
 # agent
 .AGENT.md
 .CLAUDE.md
-/docs
+
+# docs
+docs/PULL_REQUEST_TEMPLATE.md
+docs/RULE.md
+docs/memo/
