@@ -10,6 +10,7 @@ const STATUS_BY_ERROR: Record<CompletePaymentError, number> = {
     RESERVATION_MISMATCH: 400,
     NOT_PAID: 409,
     RESERVATION_NOT_FOUND: 404,
+    HOLD_EXPIRED_REFUNDED: 409,
 };
 
 const MESSAGE_BY_ERROR: Record<CompletePaymentError, string> = {
@@ -17,6 +18,7 @@ const MESSAGE_BY_ERROR: Record<CompletePaymentError, string> = {
     RESERVATION_MISMATCH: "이 예약의 결제 건이 아닙니다.",
     NOT_PAID: "아직 결제가 완료되지 않았습니다.",
     RESERVATION_NOT_FOUND: "예약을 찾을 수 없습니다.",
+    HOLD_EXPIRED_REFUNDED: "결제 처리 중 예약이 만료되어 자동으로 환불되었습니다.",
 };
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
