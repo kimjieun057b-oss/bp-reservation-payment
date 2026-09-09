@@ -1,8 +1,8 @@
 "use client";
 
-// 결제 대기 화면: 예약 요약 + 홀드 취소.
-// 설계문서 3장(예약 상태 흐름도)의 "PG 결제창 진입" 단계 — 실제 PG 연동(PaymentProvider 구현체)은
-// M3에서 붙는다. 그 전까지는 홀드 조회/취소만 동작하는 대기 화면으로 둔다.
+// 결제 대기 화면: 예약 요약 + PortOne 결제창 호출 + 홀드 취소.
+// 설계문서 3장(예약 상태 흐름도)의 "PG 결제창 진입" 단계. 결제 자체는 브라우저 SDK가 처리하고,
+// 서버는 그 결과를 재검증(/payment/complete)하거나 PG 웹훅으로 예약을 확정한다(FR-6).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -31,7 +31,7 @@ const STATUS_LABEL: Record<ReservationDetail["status"], string> = {
     HOLD: "결제 대기 중",
     CONFIRMED: "예약 확정",
     CANCELLED: "예약 취소됨",
-    EXPIRED: "홀드 만료됨",
+    EXPIRED: "결제 만료됨",
 };
 
 export default function CheckoutPanel({ reservationId }: CheckoutPanelProps) {
@@ -40,36 +40,39 @@ export default function CheckoutPanel({ reservationId }: CheckoutPanelProps) {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [cancelling, setCancelling] = useState(false);
     const [cancelError, setCancelError] = useState<string | null>(null);
+    const [paying, setPaying] = useState(false);
+    const [payError, setPayError] = useState<string | null>(null);
     const [completeMessage, setCompleteMessage] = useState<string | null>(null);
     const notifiedConfirmRef = useRef(false);
 
+    // 예약 상태 조회 + 반영을 한 곳에 모아, polling과 결제 완료 직후 즉시 갱신 양쪽에서 재사용한다.
+    const fetchReservation = useCallback(async () => {
+        const res = await fetch(`/api/reservations/${reservationId}`);
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.message ?? "예약 정보를 불러오지 못했습니다.");
+
+        const data = result.reservation as ReservationDetail;
+        setReservation(data);
+        setLoadError(null);
+
+        if (data.status === "CONFIRMED" && !notifiedConfirmRef.current) {
+            notifiedConfirmRef.current = true;
+            setCompleteMessage("예약이 완료되었습니다.");
+        }
+
+        return data;
+    }, [reservationId]);
+
     // 최초 조회 + 5초마다 polling (설계문서 4-1: 홀드 만료/결제 확정 여부를 polling으로 반영).
-    // fetch(...).then(...) 체인을 effect 안에 직접 써서, setState는 항상 비동기 콜백 안에서만 호출되게 한다.
     useEffect(() => {
         let cancelled = false;
 
         const poll = () => {
-            fetch(`/api/reservations/${reservationId}`)
-                .then(async (res) => {
-                    const result = await res.json();
-                    if (!res.ok) throw new Error(result.message ?? "예약 정보를 불러오지 못했습니다.");
-                    return result.reservation as ReservationDetail;
-                })
-                .then((data) => {
-                    if (cancelled) return;
-                    setReservation(data);
-                    setLoadError(null);
-
-                    if (data.status === "CONFIRMED" && !notifiedConfirmRef.current) {
-                        notifiedConfirmRef.current = true;
-                        setCompleteMessage("예약이 완료되었습니다.");
-                    }
-                })
-                .catch((err) => {
-                    if (!cancelled) {
-                        setLoadError(err instanceof Error ? err.message : "예약 정보를 불러오지 못했습니다.");
-                    }
-                });
+            fetchReservation().catch((err) => {
+                if (!cancelled) {
+                    setLoadError(err instanceof Error ? err.message : "예약 정보를 불러오지 못했습니다.");
+                }
+            });
         };
 
         const pollId = setInterval(poll, 5000);
@@ -79,7 +82,52 @@ export default function CheckoutPanel({ reservationId }: CheckoutPanelProps) {
             cancelled = true;
             clearInterval(pollId);
         };
-    }, [reservationId]);
+    }, [fetchReservation]);
+
+    async function handlePay() {
+        if (!reservation) return;
+
+        setPaying(true);
+        setPayError(null);
+        try {
+            const intentRes = await fetch(`/api/reservations/${reservationId}/payment`, { method: "POST" });
+            const intent = await intentRes.json();
+            if (!intentRes.ok) throw new Error(intent.message ?? "결제 준비에 실패했습니다.");
+
+            const PortOne = await import("@portone/browser-sdk/v2");
+            const response = await PortOne.requestPayment({
+                storeId: process.env.NEXT_PUBLIC_PORTONE_STORE_ID as string,
+                channelKey: process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY as string,
+                paymentId: intent.order_id,
+                orderName: intent.order_name,
+                totalAmount: intent.amount,
+                currency: "CURRENCY_KRW",
+                payMethod: "CARD",
+                customer: { fullName: reservation.guest_name },
+                redirectUrl: window.location.href,
+            });
+
+            if (!response || response.code !== undefined) {
+                throw new Error(response?.message ?? "결제가 취소되었거나 실패했습니다.");
+            }
+
+            // 브라우저 응답은 위변조 가능하므로 서버가 PG API로 재검증한 뒤에만 예약을 확정한다(FR-6).
+            const completeRes = await fetch(`/api/reservations/${reservationId}/payment/complete`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ order_id: response.paymentId }),
+            });
+            const completeResult = await completeRes.json();
+            if (!completeRes.ok) throw new Error(completeResult.message ?? "결제 확인에 실패했습니다.");
+
+            // 서버는 이미 확정 처리를 마쳤으므로, 다음 polling(최대 5초)을 기다리지 않고 즉시 화면에 반영한다.
+            fetchReservation().catch(() => {});
+        } catch (err) {
+            setPayError(err instanceof Error ? err.message : "결제 중 오류가 발생했습니다.");
+        } finally {
+            setPaying(false);
+        }
+    }
 
     async function handleCancel() {
         setCancelling(true);
@@ -160,14 +208,18 @@ export default function CheckoutPanel({ reservationId }: CheckoutPanelProps) {
                             <>
                                 {cancelError && <p className="text-sm text-red-400 mb-3">{cancelError}</p>}
 
-                                {/* TODO(M3): lib/payments의 PaymentProvider 구현체 연동 후 실제 결제창 호출로 교체 */}
-                                <button type="button" disabled className="btn-primary w-full mb-2">
-                                    결제하기 (PG 연동 준비 중)
+                                <button
+                                    type="button"
+                                    onClick={handlePay}
+                                    disabled={paying || cancelling}
+                                    className="btn-primary w-full mb-2"
+                                >
+                                    {paying ? "결제 처리 중..." : "결제하기"}
                                 </button>
                                 <button
                                     type="button"
                                     onClick={handleCancel}
-                                    disabled={cancelling}
+                                    disabled={cancelling || paying}
                                     className="w-full text-sm text-white/60 hover:text-white transition-colors py-2 cursor-pointer disabled:opacity-50"
                                 >
                                     {cancelling ? "취소 처리 중..." : "예약 취소하고 돌아가기"}
@@ -194,6 +246,7 @@ export default function CheckoutPanel({ reservationId }: CheckoutPanelProps) {
                 </div>
             </section>
             <Toast vaild={completeMessage} setVaild={closeCompleteToast} />
+            <Toast vaild={payError} setVaild={setPayError} />
         </>
     );
 }

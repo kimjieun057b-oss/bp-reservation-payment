@@ -80,6 +80,19 @@
 
 ---
 
+## DEC-005: PaymentProvider 인터페이스를 PortOne V2 실제 흐름에 맞게 재설계
+
+- **날짜**: 2026-09-09
+- **배경/문제**: `lib/payments/PaymentProvider.ts`는 PG사 선정(DEC: 토스페이먼츠/PortOne 경유) 이전에 `requestPayment(서버가 결제를 요청해 paymentKey를 받는 방식)` 형태로 미리 스캐폴딩되어 있었음. M3 착수 시 PortOne V2 공식 문서(서버 SDK `@portone/server-sdk`, 브라우저 SDK `@portone/browser-sdk`)를 직접 확인해보니, PortOne V2는 결제 요청 자체를 브라우저 SDK가 클라이언트에서 직접 처리하고(`PortOne.requestPayment()`), 서버는 그 결과를 절대 그대로 신뢰하지 말고 `paymentId`로 PG API를 재조회해 검증해야 하는 구조였음(서버발 "요청"이 없음).
+- **AI 초안**: Claude가 WebSearch/WebFetch로 `portone-io/server-sdk`, `@portone/browser-sdk` 공식 문서·타입 정의를 조사한 뒤, 기존 `requestPayment`를 제거하고 `verifyPayment(orderId)`(PG 조회/검증) 중심으로 인터페이스를 재설계할 것을 제안.
+- **검토 포인트**: 인터페이스를 사후에 바꾸는 게 맞는지 vs 기존 시그니처를 억지로 맞추는 게 나은지 검토 — 기존 시그니처(`paymentKey`/`redirectUrl`)로는 PortOne V2 흐름을 표현할 수 없어 억지로 맞추면 오히려 오해를 유발한다고 판단. PRD FR-5의 "PG사 교체 가능한 인터페이스"라는 의도 자체는 유지하면서, 실제 구현 가능한 형태로 고치는 것이 M3의 목적에 맞다고 결론.
+- **최종 결정**: `PaymentProvider`를 `verifyPayment(orderId)` / `verifyWebhook(rawBody, headers)` / `refund(req)` 3개 메서드로 재정의. 결제 확정 로직(`lib/reservations/payment.ts`의 `completePayment`)은 "브라우저 성공 응답 직후 클라이언트가 호출하는 sync 경로"와 "PG 웹훅" 양쪽에서 재사용하며, `payments.order_id`(UNIQUE) 기준으로 멱등하게 동작하도록 구현(FR-6).
+- **결정 이유 / 트레이드오프**: 브라우저 SDK 응답은 클라이언트에서 위변조 가능하므로 서버 재검증이 필수이며, 이 재검증 로직을 "결제 확정" 도메인 함수 하나로 통일해 sync/webhook 두 경로가 로직을 중복 구현하지 않게 함. 다만 verifyWebhook의 두 번째 인자를 문자열 서명 하나에서 헤더 레코드(`webhook-id`/`webhook-signature`/`webhook-timestamp`)로 바꿔 PortOne의 실제 웹훅 서명 방식(Svix 스타일)에 맞춤 — 다른 PG사를 붙일 때 이 헤더 인터페이스가 안 맞을 수 있다는 점은 알려진 한계로 남김.
+- **상태**: 채택
+- **관련 파일/커밋**: `lib/payments/PaymentProvider.ts`, `lib/payments/PortoneProvider.ts`, `lib/reservations/payment.ts`, `app/api/reservations/[id]/payment/complete/route.ts`, `app/api/payments/webhook/[provider]/route.ts`
+
+---
+
 ## 참고: 기록해두면 특히 유용한 결정 포인트 목록
 
 프로젝트 진행하면서 아래 항목들은 거의 반드시 결정을 거치게 되니, 마주칠 때마다 DEC 항목으로 남겨보세요.
