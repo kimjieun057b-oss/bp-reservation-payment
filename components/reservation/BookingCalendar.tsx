@@ -110,7 +110,7 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
             .then((list) => {
                 if (cancelled) return;
                 setPickerRoomTypes(list);
-                if (list.length > 0) setSelectedRoomTypeId(list[0].id); // 기본값: 가장 저렴한 객실
+                // 객실은 자동 선택하지 않는다 - 사용자가 드롭다운에서 직접 골라야 한다.
             })
             .catch((err) => {
                 if (!cancelled) setPickerError(err instanceof Error ? err.message : "객실 목록을 불러오지 못했습니다.");
@@ -124,8 +124,8 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
 
     const currentKey = monthKeyOf(viewYear, viewMonth);
     const currentDays = monthsCache[currentKey];
-    // roomTypeId prop 없이 들어와 기본 객실이 정해지길 기다리는 동안도 "불러오는 중"으로 취급한다.
-    const loading = (!roomTypeId && !selectedRoomTypeId) || (!!selectedRoomTypeId && !currentDays && !loadError);
+    const needsRoomTypeSelection = !roomTypeId && !selectedRoomTypeId;
+    const loading = !!selectedRoomTypeId && !currentDays && !loadError;
 
     useEffect(() => {
         if (!selectedRoomTypeId || monthsCache[currentKey]) return;
@@ -324,6 +324,9 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                     })}
                 </div>
 
+                {needsRoomTypeSelection && (
+                    <p className="text-xs text-muted mt-3">오른쪽에서 객실을 먼저 선택해주세요.</p>
+                )}
                 {loading && <p className="text-xs text-muted mt-3">불러오는 중...</p>}
 
                 <div className="flex flex-wrap gap-4 mt-6 text-xs text-muted">
@@ -364,7 +367,13 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                                 className="w-full flex items-center justify-between gap-2 cursor-pointer"
                             >
                                 <span className="text-title font-bold flex items-center gap-1.5">
-                                    <span className="text-primary">✓</span> {roomType?.name ?? "-"}
+                                    {roomType ? (
+                                        <>
+                                            <span className="text-primary">✓</span> {roomType.name}
+                                        </>
+                                    ) : (
+                                        <span className="text-muted font-normal">객실을 선택해주세요</span>
+                                    )}
                                 </span>
                                 <span
                                     className={`text-muted transition-transform duration-300 ${pickerOpen ? "rotate-180" : ""}`}
