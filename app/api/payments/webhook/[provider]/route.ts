@@ -37,8 +37,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
         const result = await completePayment(webhook.orderId, paymentProvider);
 
         if (!result.ok) {
-            // 예: 아직 PG 쪽 상태가 PAID로 안 잡히는 짧은 지연 등 - 재시도해도 되는 상황이므로 승인만 하고 넘어간다.
-            console.warn("[POST /api/payments/webhook/portone] completePayment 실패", result.error);
+            if (result.error === "HOLD_EXPIRED_REFUNDED") {
+                // FR-6 AC2: 홀드 만료 후 결제가 완료된 예외 케이스 - completePayment가 이미 자동 환불까지 처리했다.
+                console.info("[POST /api/payments/webhook/portone] 홀드 만료 후 결제 완료 - 자동 환불 처리됨");
+            } else {
+                // 예: 아직 PG 쪽 상태가 PAID로 안 잡히는 짧은 지연 등 - 재시도해도 되는 상황이므로 승인만 하고 넘어간다.
+                console.warn("[POST /api/payments/webhook/portone] completePayment 실패", result.error);
+            }
         }
 
         return NextResponse.json({ ok: true });

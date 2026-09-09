@@ -26,7 +26,7 @@ export async function confirmReservation(reservationId: string): Promise<Confirm
 
     if (reservation.status !== "HOLD") {
         // EXPIRED/CANCELLED 상태에서 뒤늦게 결제가 완료된 예외 케이스.
-        // 자동 환불 트리거는 lib/payments 연동 시(M3) 이 결과를 보고 호출한다.
+        // 호출부(completePayment, FR-6 AC2)가 이 결과를 보고 자동 환불을 트리거한다.
         return { ok: false, error: "NOT_HOLD" };
     }
 

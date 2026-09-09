@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useState } from "react";
+import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import Toast from "@/components/ui/Toast";
 
@@ -13,6 +13,7 @@ interface ReservationResult {
     status: ReservationStatus;
     total_price: number;
     hold_expire_at: string | null;
+    refund_amount?: number | null;
     room_types: { name: string } | null;
     rooms: { name: string } | null;
     properties: { name: string } | null;
@@ -44,10 +45,80 @@ export default function ReservationLookupForm() {
     const [loading, setLoading] = useState<boolean>(false);
     const [vaild, setVaild] = useState<string | null>(null);
     const [results, setResults] = useState<ReservationResult[] | null>(null);
+    const [pendingCancelId, setPendingCancelId] = useState<string | null>(null);
+    const [cancellingId, setCancellingId] = useState<string | null>(null);
+    const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+
+    // Toast가 닫힐 때(확인/취소 클릭 모두) 대기 중이던 취소 대상도 함께 초기화한다.
+    const closeToast: Dispatch<SetStateAction<string | null>> = useCallback((value) => {
+        setVaild(value);
+        setPendingCancelId(null);
+    }, []);
 
     const onChangeForm = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setForm((prev) => ({ ...prev, [name]: value }));
+    }, []);
+
+    // FR-4 AC2: 취소를 확정하기 전에 환불 규정 기준 예상 환불액을 먼저 조회해 안내한다.
+    const requestCancel = useCallback(async (reservationId: string) => {
+        setPreviewLoadingId(reservationId);
+        try {
+            const response = await fetch(`/api/reservations/${reservationId}/cancel`);
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || "환불 예상 금액을 조회하지 못했습니다.");
+            }
+
+            const { refundPercent, refundAmount, totalPrice } = result;
+
+            setPendingCancelId(reservationId);
+            setVaild(
+                refundAmount > 0
+                    ? `환불 규정에 따라 결제 금액 ${totalPrice.toLocaleString()}원의 ${refundPercent}%인 ${refundAmount.toLocaleString()}원이 환불됩니다. 예약을 취소하시겠습니까?`
+                    : "환불 규정에 따라 환불 금액이 없습니다(0원). 그래도 예약을 취소하시겠습니까?"
+            );
+        } catch (err) {
+            setVaild(err instanceof Error ? err.message : "환불 예상 금액을 조회하지 못했습니다.");
+        } finally {
+            setPreviewLoadingId(null);
+        }
+    }, []);
+
+    const performCancel = useCallback(async (reservationId: string) => {
+        setCancellingId(reservationId);
+        try {
+            const response = await fetch(`/api/reservations/${reservationId}/cancel`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reason: "고객 취소" }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || "예약 취소에 실패했습니다.");
+            }
+
+            setResults((prev) =>
+                prev?.map((r) =>
+                    r.id === reservationId
+                        ? { ...r, status: "CANCELLED" as ReservationStatus, refund_amount: result.refundAmount }
+                        : r
+                ) ?? prev
+            );
+
+            setVaild(
+                result.refundAmount > 0
+                    ? `예약이 취소되었습니다. ${result.refundAmount.toLocaleString()}원이 환불됩니다.`
+                    : "예약이 취소되었습니다. 환불 규정상 환불 금액은 없습니다."
+            );
+        } catch (err) {
+            setVaild(err instanceof Error ? err.message : "예약 취소에 실패했습니다.");
+        } finally {
+            setCancellingId(null);
+        }
     }, []);
 
     const onSubmitForm = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
@@ -146,17 +217,41 @@ export default function ReservationLookupForm() {
                                 <span className="text-sm text-body">결제 금액</span>
                                 <span className="font-bold text-title">{r.total_price.toLocaleString()}원</span>
                             </div>
+                            {r.status === "CANCELLED" && r.refund_amount != null && (
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-body">환불 금액</span>
+                                    <span className="font-bold text-title">{r.refund_amount.toLocaleString()}원</span>
+                                </div>
+                            )}
                             {r.status === "HOLD" && (
                                 <Link href={`/checkout/${r.id}`} className="btn-primary w-full text-center block">
                                     결제 진행하기
                                 </Link>
+                            )}
+                            {r.status === "CONFIRMED" && (
+                                <button
+                                    type="button"
+                                    onClick={() => requestCancel(r.id)}
+                                    disabled={cancellingId === r.id || previewLoadingId === r.id}
+                                    className="btn-danger w-full text-center block"
+                                >
+                                    {cancellingId === r.id
+                                        ? "취소 처리 중..."
+                                        : previewLoadingId === r.id
+                                          ? "환불액 확인 중..."
+                                          : "예약 취소"}
+                                </button>
                             )}
                         </li>
                     ))}
                 </ul>
             )}
 
-            <Toast vaild={vaild} setVaild={setVaild} />
+            <Toast
+                vaild={vaild}
+                setVaild={closeToast}
+                onConfirm={pendingCancelId ? () => performCancel(pendingCancelId) : undefined}
+            />
         </>
     );
 }

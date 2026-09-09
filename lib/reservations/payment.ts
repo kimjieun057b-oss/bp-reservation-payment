@@ -68,11 +68,38 @@ export type CompletePaymentError =
     | "PAYMENT_NOT_FOUND"
     | "RESERVATION_MISMATCH"
     | "NOT_PAID"
-    | "RESERVATION_NOT_FOUND";
+    | "RESERVATION_NOT_FOUND"
+    | "HOLD_EXPIRED_REFUNDED";
 
 export type CompletePaymentResult =
     | { ok: true; alreadyConfirmed: boolean }
     | { ok: false; error: CompletePaymentError };
+
+// FR-6 AC2: 홀드가 이미 만료(EXPIRED)되었거나 취소된 뒤에 결제가 뒤늦게 완료된 예외 케이스.
+// 예약을 확정시킬 수 없으므로 실제로 PG에 결제된 금액을 그대로 자동 환불한다.
+// orderId(=payments.order_id)는 completePayment가 이미 조회해둔 값을 그대로 재사용한다.
+async function refundExpiredPayment(
+    payment: { id: string; reservation_id: string; amount: number },
+    orderId: string,
+    provider: PaymentProvider
+): Promise<void> {
+    await provider.refund({
+        orderId,
+        amount: payment.amount,
+        reason: "홀드 만료 후 결제 완료 - 자동 환불",
+    });
+
+    await supabaseAdmin
+        .from("payments")
+        .update({ status: "REFUNDED" })
+        .eq("id", payment.id)
+        .eq("status", "PAID"); // 낙관적 동시성: 이미 처리된 중복 호출이면 건너뛴다
+
+    await supabaseAdmin
+        .from("reservations")
+        .update({ refund_amount: payment.amount, updated_at: new Date().toISOString() })
+        .eq("id", payment.reservation_id);
+}
 
 // FR-6: PG 결제 결과를 서버에서 재검증한 뒤 예약을 확정한다.
 // 브라우저에서 받은 결제 성공 응답과 PG 웹훅 양쪽에서 모두 호출될 수 있으므로,
@@ -99,9 +126,17 @@ export async function completePayment(
 
     if (payment.status === "PAID") {
         const confirmResult = await confirmReservation(payment.reservation_id);
-        return confirmResult.ok
-            ? { ok: true, alreadyConfirmed: true }
-            : { ok: false, error: "RESERVATION_NOT_FOUND" };
+
+        if (confirmResult.ok) {
+            return { ok: true, alreadyConfirmed: true };
+        }
+
+        if (confirmResult.error === "NOT_HOLD") {
+            await refundExpiredPayment(payment, orderId, provider);
+            return { ok: false, error: "HOLD_EXPIRED_REFUNDED" };
+        }
+
+        return { ok: false, error: "RESERVATION_NOT_FOUND" };
     }
 
     const verified = await provider.verifyPayment(orderId);
@@ -136,6 +171,11 @@ export async function completePayment(
     const confirmResult = await confirmReservation(payment.reservation_id);
 
     if (!confirmResult.ok) {
+        if (confirmResult.error === "NOT_HOLD") {
+            await refundExpiredPayment(payment, orderId, provider);
+            return { ok: false, error: "HOLD_EXPIRED_REFUNDED" };
+        }
+
         return { ok: false, error: "RESERVATION_NOT_FOUND" };
     }
 

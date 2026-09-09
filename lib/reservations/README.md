@@ -13,7 +13,7 @@
 | `hold.ts` | `createHold` — 유닛(rooms)을 순회하며 INSERT, `EXCLUDE` 제약 위반(23P01)이면 다음 유닛으로 자동 폴백 |
 | `confirm.ts` | `confirmReservation` — 결제 웹훅에서 호출되는 HOLD→CONFIRMED 전환 (멱등) |
 | `expire.ts` | `expireDueHolds` — 만료된 HOLD 일괄 정리 (Cron이 M6에서 이 함수를 호출) |
-| `cancel.ts` | `releaseHold`(결제 전 홀드 해제) / `cancelReservation`(결제 후 취소 + `refund_policies` 기반 환불액 계산) |
+| `cancel.ts` | `releaseHold`(결제 전 홀드 해제) / `cancelReservation`(결제 후 취소 + `refund_policies` 기반 환불액 계산 + `PaymentProvider.refund` 실호출) |
 | `refund.ts` | 환불 규정 매칭 순수 함수 (DB 의존 없음, 단위 테스트 대상) |
 
 ## 테스트
