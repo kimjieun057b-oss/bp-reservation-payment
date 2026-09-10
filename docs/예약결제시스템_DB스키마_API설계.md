@@ -255,7 +255,7 @@ create table admin_users (
 ## 4. API 설계
 
 Base URL: `/api`
-인증: 고객용 API는 세션리스(예약번호+전화번호 검증), 관리자용 API는 Supabase Auth 세션 필요
+인증: 고객용 API는 세션리스(예약번호+전화번호 검증)
 
 ### 4-1. 고객용 (Public)
 

@@ -12,7 +12,7 @@ export default function AdminLayout({
             <div className="flex">
                 <SideMenu />
                 <div className="w-full min-h-screen overflow-auto bg-surface">
-                    <div className="w-full max-w-300 p-20 mx-auto my-0">
+                    <div className="w-full max-w-300 p-20 mx-auto my-0 pc:px-0">
                         {children}
                     </div>
                 </div>
