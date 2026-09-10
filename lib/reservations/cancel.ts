@@ -6,6 +6,8 @@ export type ReleaseHoldError = "NOT_FOUND" | "NOT_HOLD";
 export type ReleaseHoldResult = { ok: true } | { ok: false; error: ReleaseHoldError };
 
 // DELETE /reservations/:id/hold: 결제 전 홀드를 고객이 직접 해제하는 경우. 결제된 금액이 없으므로 환불 계산이 필요없다.
+// EXPIRED는 hold_expire_at 시간 초과로 인한 "자동" 만료(expireDueHolds)에만 쓰고,
+// 이 경로처럼 사용자가 직접 취소 버튼을 눌러 능동적으로 끝낸 경우는 결제 전/후 여부와 무관하게 CANCELLED로 남긴다.
 export async function releaseHold(reservationId: string): Promise<ReleaseHoldResult> {
     const { data: reservation } = await supabaseAdmin
         .from("reservations")

@@ -1,14 +1,15 @@
 // FR-7 AC2/FR-8: 관리자 강제 취소 및 수동 환불 처리 (설계문서 4-2 "PATCH /admin/reservations/:id/cancel").
 // refund_amount를 지정하면 환불 규정 대신 그 금액을 그대로 PG 환불에 사용한다(예외 처리 경로).
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 import { cancelReservation } from "@/lib/reservations";
 import { paymentProvider } from "@/lib/payments";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-    // middleware.ts는 /admin 페이지만 보호하므로, /api/admin 라우트는 여기서 동일한 세션 쿠키를 직접 확인한다.
-    const cookieStore = await cookies();
-    if (!cookieStore.get("admin_session")?.value) {
+    // middleware.ts는 /admin 페이지만 보호하므로, /api/admin 라우트는 여기서 동일하게 Supabase Auth 세션을 직접 확인한다.
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
         return NextResponse.json({ error: "UNAUTHORIZED", message: "관리자 인증이 필요합니다." }, { status: 401 });
     }
 

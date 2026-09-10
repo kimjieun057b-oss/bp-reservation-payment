@@ -70,7 +70,23 @@
   }
 
   table {
-    @apply w-full border border-[#ccc] collapse;
+    @apply w-full border-collapse text-sm text-body;
+  }
+
+  thead {
+    @apply bg-surface;
+  }
+
+  th {
+    @apply px-4 py-3 text-left text-xs font-medium text-muted;
+  }
+
+  td {
+    @apply px-4 py-3 border-t border-gray-100;
+  }
+
+  tbody tr {
+    @apply transition-colors hover:bg-surface;
   }
 
   img {

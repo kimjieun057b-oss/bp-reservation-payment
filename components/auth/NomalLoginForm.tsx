@@ -1,18 +1,18 @@
 "use client";
 import { useCallback, useState } from "react"
 import Toast from "../ui/Toast";
+import { createClient } from "@/lib/supabase/client";
 
 export interface NomalLoginFormProps {
-    admin_id : string;
-    password_hash : string;
+    email : string;
+    password : string;
 }
 
 export default function NomalLoginForm() {
-    // 2. login-ID/PW
-    // table : user_admin table에서 ID/PW 연동
+    // Supabase Auth 로그인 (관리자 계정은 공개 가입 없이 service role로만 발급됨)
 
     const [form, setForm] = useState<NomalLoginFormProps>({
-        admin_id: "", password_hash: ""
+        email: "", password: ""
     });
     const [loading, setLoading] = useState<boolean>(false);
     const [vaild, setVaild] = useState<string | null>(null);
@@ -29,72 +29,64 @@ export default function NomalLoginForm() {
         e.preventDefault();
         if (loading) return;
 
-        if (!form.admin_id.trim()) {
-            setVaild("아이디를 입력해주세요.")
+        if (!form.email.trim()) {
+            setVaild("이메일을 입력해주세요.")
             return;
         }
 
-        if (!form.password_hash.trim()) {
+        if (!form.password.trim()) {
             setVaild("비밀번호를 입력해주세요.")
             return;
         }
 
         try {
             setLoading(true);
-            const response = await fetch('/api/login/id', {
-                method: "POST",
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    admin_id: form.admin_id,
-                    password_hash: form.password_hash
-                }),
+            const supabase = createClient();
+            const { error } = await supabase.auth.signInWithPassword({
+                email: form.email,
+                password: form.password,
             });
 
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || '로그인에 실패했습니다.');
+            if (error) {
+                throw new Error('이메일 또는 비밀번호가 올바르지 않습니다.');
             }
 
-            // 로그인 성공 시 관리자 메인 또는 홈으로 이동
-            window.location.href = '/admin';
-            setLoading(false);
+            // 로그인 성공 시 관리자 메인으로 이동 (미들웨어가 새 세션 쿠키를 읽도록 전체 리로드)
+            window.location.href = '/admin/dashboard';
 
         } catch (err: any) {
             setVaild(err.message);
-            setForm({ admin_id: "", password_hash: "" })
+            setForm({ email: "", password: "" })
         } finally {
             setLoading(false);
         }
 
-    }, [form])
+    }, [form, loading])
 
     return (
         <>
             <form onSubmit={onSubminForm} className="space-y-4">
                 <div>
-                    <label htmlFor="admin_id" className="form-label">아이디</label>
+                    <label htmlFor="email" className="form-label">이메일</label>
                     <input
-                        type="text"
-                        id="admin_id"
-                        name="admin_id"
-                        placeholder="아이디를 입력해주세요"
+                        type="email"
+                        id="email"
+                        name="email"
+                        placeholder="이메일을 입력해주세요"
                         onChange={onChangeForm}
-                        value={form.admin_id}
+                        value={form.email}
                         className="form-input"
                     />
                 </div>
                 <div>
-                    <label htmlFor="password_hash" className="form-label">비밀번호</label>
+                    <label htmlFor="password" className="form-label">비밀번호</label>
                     <input
                         type="password"
-                        id="password_hash"
-                        name="password_hash"
+                        id="password"
+                        name="password"
                         placeholder="비밀번호를 입력해주세요"
                         onChange={onChangeForm}
-                        value={form.password_hash}
+                        value={form.password}
                         className="form-input"
                     />
                 </div>

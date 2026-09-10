@@ -48,11 +48,42 @@ export default function ReservationLookupForm() {
     const [pendingCancelId, setPendingCancelId] = useState<string | null>(null);
     const [cancellingId, setCancellingId] = useState<string | null>(null);
     const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+    const [pendingReleaseId, setPendingReleaseId] = useState<string | null>(null);
+    const [releasingId, setReleasingId] = useState<string | null>(null);
 
     // Toast가 닫힐 때(확인/취소 클릭 모두) 대기 중이던 취소 대상도 함께 초기화한다.
     const closeToast: Dispatch<SetStateAction<string | null>> = useCallback((value) => {
         setVaild(value);
         setPendingCancelId(null);
+        setPendingReleaseId(null);
+    }, []);
+
+    // 결제 전(HOLD) 취소: 결제된 금액이 없어 환불 계산 없이 바로 홀드를 해제한다(DELETE /reservations/:id/hold).
+    const requestRelease = useCallback((reservationId: string) => {
+        setPendingReleaseId(reservationId);
+        setVaild("결제 전 예약을 취소하시겠습니까? 결제된 금액이 없어 별도 환불 없이 바로 취소됩니다.");
+    }, []);
+
+    const performRelease = useCallback(async (reservationId: string) => {
+        setReleasingId(reservationId);
+        try {
+            const response = await fetch(`/api/reservations/${reservationId}/hold`, { method: "DELETE" });
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || "예약 취소에 실패했습니다.");
+            }
+
+            setResults((prev) =>
+                prev?.map((r) => (r.id === reservationId ? { ...r, status: "CANCELLED" as ReservationStatus } : r)) ??
+                prev
+            );
+            setVaild("예약이 취소되었습니다.");
+        } catch (err) {
+            setVaild(err instanceof Error ? err.message : "예약 취소에 실패했습니다.");
+        } finally {
+            setReleasingId(null);
+        }
     }, []);
 
     const onChangeForm = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,8 +185,8 @@ export default function ReservationLookupForm() {
             if (result.reservations.length === 0) {
                 setVaild("일치하는 예약 내역이 없습니다. 예약자명과 전화번호를 다시 확인해 주세요.");
             }
-        } catch (err: any) {
-            setVaild(err.message);
+        } catch (err) {
+            setVaild(err instanceof Error ? err.message : "예약 조회에 실패했습니다.");
             setResults(null);
         } finally {
             setLoading(false);
@@ -224,9 +255,19 @@ export default function ReservationLookupForm() {
                                 </div>
                             )}
                             {r.status === "HOLD" && (
-                                <Link href={`/checkout/${r.id}`} className="btn-primary w-full text-center block">
-                                    결제 진행하기
-                                </Link>
+                                <div className="space-y-2">
+                                    <Link href={`/checkout/${r.id}`} className="btn-primary w-full text-center block">
+                                        결제 진행하기
+                                    </Link>
+                                    <button
+                                        type="button"
+                                        onClick={() => requestRelease(r.id)}
+                                        disabled={releasingId === r.id}
+                                        className="btn-danger w-full text-center block"
+                                    >
+                                        {releasingId === r.id ? "취소 처리 중..." : "예약 취소"}
+                                    </button>
+                                </div>
                             )}
                             {r.status === "CONFIRMED" && (
                                 <button
@@ -250,7 +291,13 @@ export default function ReservationLookupForm() {
             <Toast
                 vaild={vaild}
                 setVaild={closeToast}
-                onConfirm={pendingCancelId ? () => performCancel(pendingCancelId) : undefined}
+                onConfirm={
+                    pendingCancelId
+                        ? () => performCancel(pendingCancelId)
+                        : pendingReleaseId
+                          ? () => performRelease(pendingReleaseId)
+                          : undefined
+                }
             />
         </>
     );
