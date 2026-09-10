@@ -20,7 +20,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const { data: roomType, error: roomTypeError } = await supabaseAdmin
         .from("room_types")
-        .select("id, name, base_price, capacity_standard, capacity_max")
+        .select("id, name, base_price, capacity_standard, capacity_max, property_id")
         .eq("id", id)
         .eq("is_active", true)
         .single();
@@ -31,6 +31,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             { status: 404 }
         );
     }
+
+    // FR-4 AC2: 예약 신청 전에 환불 규정을 미리 안내하기 위해 함께 내려준다 (days_before 내림차순).
+    const { data: refundPolicies } = await supabaseAdmin
+        .from("refund_policies")
+        .select("days_before, refund_percent")
+        .eq("property_id", roomType.property_id)
+        .order("days_before", { ascending: false });
 
     const { count: totalRooms } = await supabaseAdmin
         .from("rooms")
@@ -82,5 +89,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         room_type: roomType,
         total_rooms: totalRooms ?? 0,
         days,
+        refund_policies: refundPolicies ?? [],
     });
 }

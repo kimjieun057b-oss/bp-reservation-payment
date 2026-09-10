@@ -5,16 +5,31 @@ import { cancelReservation, previewRefund } from "@/lib/reservations";
 import { paymentProvider } from "@/lib/payments";
 
 // FR-4 AC2: 취소 확정 전, 환불 규정 기준 예상 환불액을 먼저 안내하기 위한 조회 전용 엔드포인트. 상태 변경 없음.
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+// 예약 UUID만으로는 동작하지 않도록 예약자명+전화번호를 함께 받아 소유자 확인 후에만 금액을 보여준다.
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
+    const { searchParams } = new URL(request.url);
+    const guestName = searchParams.get("guest_name");
+    const guestPhone = searchParams.get("guest_phone");
+
+    if (!guestName?.trim() || !guestPhone?.trim()) {
+        return NextResponse.json(
+            { error: "GUEST_REQUIRED", message: "예약자명과 전화번호를 확인해 주세요." },
+            { status: 400 }
+        );
+    }
 
     try {
-        const result = await previewRefund(id);
+        const result = await previewRefund(id, { name: guestName, phone: guestPhone });
 
         if (!result.ok) {
-            const status = result.error === "NOT_FOUND" ? 404 : 409;
+            const status = result.error === "NOT_FOUND" ? 404 : result.error === "GUEST_MISMATCH" ? 403 : 409;
             const message =
-                result.error === "NOT_FOUND" ? "예약을 찾을 수 없습니다." : "취소할 수 없는 예약 상태입니다.";
+                result.error === "NOT_FOUND"
+                    ? "예약을 찾을 수 없습니다."
+                    : result.error === "GUEST_MISMATCH"
+                      ? "예약자 정보가 일치하지 않습니다."
+                      : "취소할 수 없는 예약 상태입니다.";
             return NextResponse.json({ error: result.error, message }, { status });
         }
 
@@ -32,28 +47,46 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }
 }
 
+// 예약 UUID만으로는 취소할 수 없도록 예약자명+전화번호를 함께 받아 예약 소유자인지 확인한 뒤에만 취소를 진행한다.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
 
     let reason: string | undefined;
+    let guestName: string | undefined;
+    let guestPhone: string | undefined;
     try {
         const body = await request.json();
         reason = typeof body?.reason === "string" ? body.reason : undefined;
+        guestName = typeof body?.guest_name === "string" ? body.guest_name : undefined;
+        guestPhone = typeof body?.guest_phone === "string" ? body.guest_phone : undefined;
     } catch {
-        // 빈 body 허용 (취소 사유는 선택 입력)
+        // 빈 body 허용 (취소 사유는 선택 입력이나, guest 정보는 아래에서 필수로 검사)
+    }
+
+    if (!guestName?.trim() || !guestPhone?.trim()) {
+        return NextResponse.json(
+            { error: "GUEST_REQUIRED", message: "예약자명과 전화번호를 확인해 주세요." },
+            { status: 400 }
+        );
     }
 
     try {
-        const result = await cancelReservation(id, paymentProvider, { reason });
+        const result = await cancelReservation(id, paymentProvider, {
+            reason,
+            verifyGuest: { name: guestName, phone: guestPhone },
+        });
 
         if (!result.ok) {
-            const status = result.error === "NOT_FOUND" ? 404 : 409;
+            const status =
+                result.error === "NOT_FOUND" ? 404 : result.error === "GUEST_MISMATCH" ? 403 : 409;
             const message =
                 result.error === "NOT_FOUND"
                     ? "예약을 찾을 수 없습니다."
-                    : result.error === "PAYMENT_NOT_FOUND"
-                      ? "결제 내역을 찾을 수 없습니다."
-                      : "취소할 수 없는 예약 상태입니다.";
+                    : result.error === "GUEST_MISMATCH"
+                      ? "예약자 정보가 일치하지 않습니다."
+                      : result.error === "PAYMENT_NOT_FOUND"
+                        ? "결제 내역을 찾을 수 없습니다."
+                        : "취소할 수 없는 예약 상태입니다.";
             return NextResponse.json({ error: result.error, message }, { status });
         }
 

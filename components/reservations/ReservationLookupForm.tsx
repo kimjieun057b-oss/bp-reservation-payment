@@ -67,7 +67,11 @@ export default function ReservationLookupForm() {
     const performRelease = useCallback(async (reservationId: string) => {
         setReleasingId(reservationId);
         try {
-            const response = await fetch(`/api/reservations/${reservationId}/hold`, { method: "DELETE" });
+            const response = await fetch(`/api/reservations/${reservationId}/hold`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ guest_name: form.guest_name, guest_phone: form.guest_phone }),
+            });
             const result = await response.json();
 
             if (!response.ok) {
@@ -84,7 +88,7 @@ export default function ReservationLookupForm() {
         } finally {
             setReleasingId(null);
         }
-    }, []);
+    }, [form.guest_name, form.guest_phone]);
 
     const onChangeForm = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -95,7 +99,11 @@ export default function ReservationLookupForm() {
     const requestCancel = useCallback(async (reservationId: string) => {
         setPreviewLoadingId(reservationId);
         try {
-            const response = await fetch(`/api/reservations/${reservationId}/cancel`);
+            const query = new URLSearchParams({
+                guest_name: form.guest_name,
+                guest_phone: form.guest_phone,
+            });
+            const response = await fetch(`/api/reservations/${reservationId}/cancel?${query.toString()}`);
             const result = await response.json();
 
             if (!response.ok) {
@@ -115,7 +123,7 @@ export default function ReservationLookupForm() {
         } finally {
             setPreviewLoadingId(null);
         }
-    }, []);
+    }, [form.guest_name, form.guest_phone]);
 
     const performCancel = useCallback(async (reservationId: string) => {
         setCancellingId(reservationId);
@@ -123,7 +131,11 @@ export default function ReservationLookupForm() {
             const response = await fetch(`/api/reservations/${reservationId}/cancel`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ reason: "고객 취소" }),
+                body: JSON.stringify({
+                    reason: "고객 취소",
+                    guest_name: form.guest_name,
+                    guest_phone: form.guest_phone,
+                }),
             });
 
             const result = await response.json();
@@ -150,7 +162,7 @@ export default function ReservationLookupForm() {
         } finally {
             setCancellingId(null);
         }
-    }, []);
+    }, [form.guest_name, form.guest_phone]);
 
     const onSubmitForm = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();

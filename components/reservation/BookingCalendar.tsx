@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { enumerateNights, toISODate } from "@/lib/reservations/pricing";
+import type { RefundPolicyTier } from "@/lib/reservations/refund";
 import Toast from "@/components/ui/Toast";
 
 export interface BookingCalendarProps {
@@ -34,12 +35,19 @@ interface AvailabilityResponse {
     room_type: RoomTypeInfo;
     total_rooms: number;
     days: DayInfo[];
+    refund_policies: RefundPolicyTier[];
 }
 
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
 function monthKeyOf(year: number, month: number): string {
     return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+// FR-4 AC2: 예약 신청 전에 환불 규정을 미리 보여주기 위한 안내 문구 생성.
+function formatRefundTier(tier: RefundPolicyTier): string {
+    const when = tier.days_before === 0 ? "당일 취소" : `체크인 ${tier.days_before}일 전까지 취소`;
+    return tier.refund_percent > 0 ? `${when}: ${tier.refund_percent}% 환불` : `${when}: 환불 불가`;
 }
 
 export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
@@ -57,6 +65,7 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
     const [viewMonth, setViewMonth] = useState(today.getMonth() + 1); // 1~12
 
     const [roomType, setRoomType] = useState<RoomTypeInfo | null>(null);
+    const [refundPolicies, setRefundPolicies] = useState<RefundPolicyTier[]>([]);
     const [monthsCache, setMonthsCache] = useState<Record<string, DayInfo[]>>({});
     const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -90,6 +99,7 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
         setSelectedRoomTypeId(id);
         setMonthsCache({});
         setRoomType(null);
+        setRefundPolicies([]);
         setCheckIn(null);
         setCheckOut(null);
         setLoadError(null);
@@ -142,6 +152,7 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                 if (cancelled) return;
                 setLoadError(null);
                 setRoomType(result.room_type);
+                setRefundPolicies(result.refund_policies);
                 setMonthsCache((prev) => ({ ...prev, [currentKey]: result.days }));
             })
             .catch((err) => {
@@ -512,6 +523,15 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                 )}
             </div>
         </div>
+
+        {refundPolicies.length > 0 && (
+            <div className="card p-5 text-xs text-muted space-y-1 mt-6">
+                <p className="text-title font-medium mb-1">환불 규정</p>
+                {refundPolicies.map((tier) => (
+                    <p key={tier.days_before}>{formatRefundTier(tier)}</p>
+                ))}
+            </div>
+        )}
         <Toast vaild={submitError} setVaild={setSubmitError} />
         </>
     );
