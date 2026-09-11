@@ -33,7 +33,7 @@ export function useUpdate<TPayload extends Record<string, any> | FormData = Reco
             const result = await response.json();
 
             if (!response.ok) {
-                throw new Error(result.error || "수정에 실패했습니다.");
+                throw new Error(result.message || result.error || "수정에 실패했습니다.");
             }
 
             optionsRef.current.onSuccess?.(result);

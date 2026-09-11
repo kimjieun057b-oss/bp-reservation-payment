@@ -53,7 +53,7 @@ export async function createHold(input: CreateHoldInput): Promise<CreateHoldResu
 
     const { data: rooms, error: roomsError } = await supabaseAdmin
         .from("rooms")
-        .select("id")
+        .select("id, blocked_from, blocked_until")
         .eq("room_type_id", input.room_type_id)
         .eq("is_active", true)
         .order("created_at", { ascending: true });
@@ -62,9 +62,17 @@ export async function createHold(input: CreateHoldInput): Promise<CreateHoldResu
         throw new Error(roomsError.message);
     }
 
+    // FR-9 AC2: 점검(blocked_from~blocked_until) 기간과 겹치는 유닛은 신규 홀드 대상에서 제외한다.
+    const availableRooms = (rooms ?? []).filter((room) => {
+        if (!room.blocked_from) return true;
+        const blockedUntil = room.blocked_until ?? "9999-12-31";
+        const overlaps = input.check_in < blockedUntil && input.check_out > room.blocked_from;
+        return !overlaps;
+    });
+
     const holdExpireAt = new Date(Date.now() + HOLD_DURATION_MINUTES * 60 * 1000).toISOString();
 
-    for (const room of rooms ?? []) {
+    for (const room of availableRooms) {
         const { data, error } = await supabaseAdmin
             .from("reservations")
             .insert({

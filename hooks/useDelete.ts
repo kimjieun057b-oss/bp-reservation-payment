@@ -40,7 +40,7 @@ export function useDelete(baseUrl: string, options: UseDeleteOptions = {}) {
 
             if (!response.ok) {
                 const result = await response.json().catch(() => null);
-                throw new Error(result?.error || "삭제에 실패했습니다.");
+                throw new Error(result?.message || result?.error || "삭제에 실패했습니다.");
             }
 
             optionsRef.current.onSuccess?.();
