@@ -93,6 +93,20 @@
 
 ---
 
+## DEC-006: 비회원 예약 취소/홀드해제 API의 소유자 검증 누락 보완
+
+- **날짜**: 2026-09-10
+- **배경/문제**: [ReservationLookupForm.tsx](../components/reservations/ReservationLookupForm.tsx)는 예약자명+전화번호로 조회할 때만 본인 확인을 거치는데, 실제 취소를 수행하는 `POST /reservations/:id/cancel`과 `DELETE /reservations/:id/hold`는 URL의 예약 UUID만으로 동작하고 요청자가 실제 예약자인지 재검증하지 않았음. 예약 UUID가 브라우저 히스토리, 결제 완료 페이지 URL 등으로 노출될 경우 조회 단계를 거치지 않고 타인의 예약을 취소할 수 있는 IDOR 성격의 문제.
+- **AI 초안**: Claude가 "PortOne 같은 외부 본인인증 API 연동이 필요한가?"라는 질문에, 이 시스템은 비회원 예약 조회 로직(예약자명+전화번호 대조)을 이미 갖추고 있으므로 실명 본인인증 API 없이도 동일한 방식(소유자명+전화번호 매칭)을 취소/홀드해제 API에도 적용하면 된다고 제안.
+- **검토 포인트**: 관리자 강제취소(`PATCH /admin/reservations/:id/cancel`)는 Supabase Auth 세션으로 이미 별도 인증되므로, `cancelReservation` 함수에 검증을 필수로 넣으면 관리자 경로가 깨진다는 점을 확인 → 고객 경로에서만 선택적으로 켜지도록 옵션(`verifyGuest`)으로 설계.
+- **최종 결정**: `lib/reservations/cancel.ts`의 `previewRefund`(환불액 미리보기)와 `cancelReservation`(결제 완료 후 실제 취소, `CancelOptions.verifyGuest`)에는 `guest: { name, phone }` 검증을 적용해 예약 레코드와 불일치 시 `GUEST_MISMATCH`(403)로 거부. 프론트(`ReservationLookupForm.tsx`)는 조회 폼에 입력된 값을 이 요청들에 실어 보냄.
+  - **1차 수정 후 재검토(같은 날)**: 1차 구현에서는 `releaseHold`(결제 전 HOLD 해제)에도 동일하게 guest 필수 검증을 걸었는데, `/checkout/:reservationId` 페이지(예약 생성 직후 같은 세션에서 바로 접근하는 결제 대기 화면)의 "예약 취소하고 돌아가기" 버튼이 이 API를 이름/전화번호 없이 호출하고 있어 취소가 막히는 회귀가 발생함(사용자 리포트로 발견). 재검토 결과 HOLD는 결제 전 상태라 취소돼도 돈이 오가지 않고 재고만 풀리는 수준이라 오용 시 피해가 "홀드 가로채기 취소(경미한 방해)" 정도이며, 어차피 24시간 후 자동 만료되어 파급력이 제한적임. 반면 체크아웃 페이지는 재입력 UI를 새로 만들 자리가 없는 즉시 접근 플로우라, 여기에 강제하면 정상 취소 흐름 자체가 깨짐. → `releaseHold`의 guest 인자를 선택(optional)으로 되돌려, 값이 오면 검증하고 없으면 통과시키도록 수정. 실제 돈이 움직이는 `cancelReservation`(결제 완료 후 취소)만 검증을 유지.
+- **결정 이유 / 트레이드오프**: 이미 비회원 조회에 쓰던 소유자 확인 방식을 재사용해 새 외부 연동(PortOne 본인인증 등) 없이 구멍을 메움. 다만 이 방식은 실명 인증이 아니라 "예약 시 입력한 정보와 일치하는가"만 확인하는 수준이라, 이름+전화번호 조합을 아는 제3자는 여전히 (결제 완료된) 예약을 취소할 수 있음 — 보일러플레이트 스코프에서는 허용 가능한 트레이드오프로 판단했고, 더 강한 보안이 필요하면 조회 시 단기 서명 토큰을 발급해 재사용하는 방식으로 추후 교체 가능. HOLD 해제는 금전적 위험이 없다고 판단해 검증을 의도적으로 생략함 — 만약 향후 HOLD 단계에서도 민감 정보를 노출하게 되거나 악용 사례가 확인되면 재검토 필요.
+- **상태**: 채택
+- **관련 파일/커밋**: `lib/reservations/cancel.ts`, `app/api/reservations/[id]/cancel/route.ts`, `app/api/reservations/[id]/hold/route.ts`, `components/reservations/ReservationLookupForm.tsx`, `components/reservation/CheckoutPanel.tsx`(영향 확인, 코드 변경 없음)
+
+---
+
 ## 참고: 기록해두면 특히 유용한 결정 포인트 목록
 
 프로젝트 진행하면서 아래 항목들은 거의 반드시 결정을 거치게 되니, 마주칠 때마다 DEC 항목으로 남겨보세요.
@@ -101,7 +115,7 @@
 - [ ] 이중예약 방지 방식 (DB 제약 vs 애플리케이션 락 vs 둘 다) — 왜 `EXCLUDE` 제약을 선택했는지
 - [ ] PG사 선정 및 연동 방식 (추상화 인터페이스 설계 방향)
 - [ ] 환불 규정을 하드코딩할지 테이블로 뺄지
-- [ ] 비회원 예약 조회 인증 방식 (예약번호+전화번호 조합의 보안 트레이드오프)
+- [x] 비회원 예약 조회 인증 방식 (예약번호+전화번호 조합의 보안 트레이드오프) → DEC-006
 - [ ] 웹훅 멱등성 처리 방식 (order_id unique 제약 등)
 - [ ] 스코프에서 제외한 기능과 그 이유 (승인제 예약, 다국어, 회원시스템 등)
 - [ ] 배치(Cron) 주기를 1분으로 정한 이유와 한계

@@ -2,7 +2,7 @@
 // 목록 조회는 설계문서 4-2 "GET /admin/reservations?status=&date_from=&date_to="를 그대로 사용한다(백엔드는 별도 작업).
 // 강제 취소는 이미 구현된 PATCH /api/admin/reservations/:id/cancel을 그대로 재사용한다.
 "use client";
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Loading from "@/components/ui/Loading";
 import Pagination from "@/components/ui/Pagination";
 import Toast from "@/components/ui/Toast";
@@ -19,6 +19,7 @@ interface AdminReservationRow {
     status: ReservationStatus;
     total_price: number;
     refund_amount: number | null;
+    cancel_reason: string | null;
     created_at: string;
     room_types: { name: string } | null;
     rooms: { name: string } | null;
@@ -84,8 +85,11 @@ export default function ReservationList() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [vaild, setVaild] = useState<string | null>(null);
-    const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
     const [cancellingId, setCancellingId] = useState<string | null>(null);
+    // 강제 취소 모달(사유 입력) - 어떤 예약을 취소하려는지(id)와 입력 중인 사유, 유효성 에러를 관리한다.
+    const [cancelModalId, setCancelModalId] = useState<string | null>(null);
+    const [cancelReasonInput, setCancelReasonInput] = useState("");
+    const [cancelReasonError, setCancelReasonError] = useState<string | null>(null);
 
     // 재조회(필터 제출/초기화)에서 쓰는 버전 - 이펙트 밖의 이벤트 핸들러이므로 자유롭게 setState할 수 있다.
     const fetchReservations = useCallback(async (target: FilterState) => {
@@ -142,23 +146,25 @@ export default function ReservationList() {
 
     const { currentItems, totalCount, onPageChange } = usePagination(filteredRows, ITEMS_PER_PAGE);
 
-    const closeToast: Dispatch<SetStateAction<string | null>> = useCallback((value) => {
-        setVaild(value);
-        setCancelTargetId(null);
+    const openCancelModal = useCallback((id: string) => {
+        setCancelModalId(id);
+        setCancelReasonInput("");
+        setCancelReasonError(null);
     }, []);
 
-    const requestCancel = useCallback((id: string) => {
-        setCancelTargetId(id);
-        setVaild("예약을 강제 취소하시겠습니까? 환불 규정에 따라 환불 금액이 자동 계산됩니다.");
+    const closeCancelModal = useCallback(() => {
+        setCancelModalId(null);
+        setCancelReasonInput("");
+        setCancelReasonError(null);
     }, []);
 
-    const performCancel = useCallback(async (id: string) => {
+    const performCancel = useCallback(async (id: string, reason: string) => {
         setCancellingId(id);
         try {
             const response = await fetch(`/api/admin/reservations/${id}/cancel`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ reason: "관리자 강제 취소" }),
+                body: JSON.stringify({ reason }),
             });
             const result = await response.json();
 
@@ -169,21 +175,44 @@ export default function ReservationList() {
             setRows((prev) =>
                 prev.map((r) =>
                     r.id === id
-                        ? { ...r, status: "CANCELLED" as ReservationStatus, refund_amount: result.refundAmount }
+                        ? {
+                              ...r,
+                              status: "CANCELLED" as ReservationStatus,
+                              refund_amount: result.refundAmount,
+                              cancel_reason: reason,
+                          }
                         : r
                 )
             );
+            setCancelModalId(null);
+            setCancelReasonInput("");
             setVaild(
                 result.refundAmount > 0
                     ? `취소 처리되었습니다. ${result.refundAmount.toLocaleString()}원이 환불됩니다.`
                     : "취소 처리되었습니다. 환불 규정상 환불 금액은 없습니다."
             );
         } catch (err) {
-            setVaild(err instanceof Error ? err.message : "취소 처리에 실패했습니다.");
+            setCancelReasonError(err instanceof Error ? err.message : "취소 처리에 실패했습니다.");
         } finally {
             setCancellingId(null);
         }
     }, []);
+
+    const onSubmitCancel = useCallback(
+        (e: React.FormEvent<HTMLFormElement>) => {
+            e.preventDefault();
+            if (!cancelModalId) return;
+
+            const trimmed = cancelReasonInput.trim();
+            if (!trimmed) {
+                setCancelReasonError("취소 사유를 입력해주세요.");
+                return;
+            }
+
+            performCancel(cancelModalId, trimmed);
+        },
+        [cancelModalId, cancelReasonInput, performCancel]
+    );
 
     return (
         <div className="space-y-4">
@@ -286,7 +315,18 @@ export default function ReservationList() {
                                         </td>
                                         <td>{r.guest_count}명</td>
                                         <td className="font-medium text-title">
-                                            {r.total_price.toLocaleString()}원
+                                            {r.status === "CANCELLED" ? (
+                                                <>
+                                                    <p className="text-xs text-muted line-through">
+                                                        {r.total_price.toLocaleString()}원
+                                                    </p>
+                                                    <p className="whitespace-nowrap">
+                                                        환불 {(r.refund_amount ?? 0).toLocaleString()}원
+                                                    </p>
+                                                </>
+                                            ) : (
+                                                `${r.total_price.toLocaleString()}원`
+                                            )}
                                         </td>
                                         <td>
                                             <span className={`badge ${STATUS_BADGE[r.status]}`}>
@@ -297,11 +337,26 @@ export default function ReservationList() {
                                             {(r.status === "CONFIRMED" || r.status === "HOLD") && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => requestCancel(r.id)}
+                                                    onClick={() => openCancelModal(r.id)}
                                                     disabled={cancellingId === r.id}
                                                     className="btn-danger"
                                                 >
-                                                    {cancellingId === r.id ? "처리 중..." : "강제 취소"}
+                                                    강제 취소
+                                                </button>
+                                            )}
+                                            {r.status === "CANCELLED" && r.cancel_reason && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setVaild(`취소 사유: ${r.cancel_reason}`)}
+                                                    className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-title transition-colors cursor-pointer"
+                                                    aria-label="취소 사유 보기"
+                                                    title="취소 사유 보기"
+                                                >
+                                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                                        <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3" />
+                                                        <line x1="8" y1="7.2" x2="8" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                                                        <circle cx="8" cy="5" r="0.9" fill="currentColor" />
+                                                    </svg>
                                                 </button>
                                             )}
                                         </td>
@@ -316,11 +371,57 @@ export default function ReservationList() {
                 </>
             )}
 
-            <Toast
-                vaild={vaild}
-                setVaild={closeToast}
-                onConfirm={cancelTargetId ? () => performCancel(cancelTargetId) : undefined}
-            />
+            <Toast vaild={vaild} setVaild={setVaild} />
+
+            {cancelModalId && (
+                <>
+                    <form
+                        onSubmit={onSubmitCancel}
+                        className="card fixed top-1/2 left-1/2 z-50 w-[90%] max-w-sm -translate-x-1/2 -translate-y-1/2"
+                    >
+                        <div className="px-6 pt-6 pb-5">
+                            <p className="font-bold text-title mb-1">예약 강제 취소</p>
+                            <p className="text-sm text-muted pb-4 mb-4 border-b border-gray-100">
+                                환불 규정에 따라 환불 금액이 자동 계산됩니다. 취소 사유를 입력해주세요.
+                            </p>
+                            <label htmlFor="cancel-reason" className="form-label">취소 사유</label>
+                            <textarea
+                                id="cancel-reason"
+                                rows={3}
+                                className="form-input"
+                                value={cancelReasonInput}
+                                onChange={(e) => {
+                                    setCancelReasonInput(e.target.value);
+                                    setCancelReasonError(null);
+                                }}
+                                placeholder="예: 고객 요청으로 인한 취소"
+                                autoFocus
+                            />
+                            {cancelReasonError && (
+                                <p className="text-xs text-red-600 mt-1.5">{cancelReasonError}</p>
+                            )}
+                            <div className="flex justify-center gap-3 pt-5">
+                                <button
+                                    type="button"
+                                    onClick={closeCancelModal}
+                                    disabled={cancellingId === cancelModalId}
+                                    className="btn-ghost flex-1"
+                                >
+                                    취소
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={cancellingId === cancelModalId}
+                                    className="btn-primary flex-1"
+                                >
+                                    {cancellingId === cancelModalId ? "처리 중..." : "강제 취소"}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                    <div className="black-bg" />
+                </>
+            )}
         </div>
     );
 }

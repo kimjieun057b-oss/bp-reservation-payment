@@ -2,20 +2,46 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { PaymentProvider } from "@/lib/payments/PaymentProvider";
 import { daysUntil, resolveRefundPercent } from "./refund";
 
-export type ReleaseHoldError = "NOT_FOUND" | "NOT_HOLD";
+export interface GuestIdentity {
+    name: string;
+    phone: string;
+}
+
+const normalizePhone = (value: string) => value.replace(/\D/g, "");
+
+// 비회원 예약이라 로그인 세션이 없으므로, 조회(lookup) 때와 동일하게 예약자명+전화번호가
+// DB 레코드와 일치하는지로 "이 요청자가 예약 소유자인지"만 확인한다 (실명 본인인증 아님, PG/외부 API 불필요).
+function isGuestOwner(
+    reservation: { guest_name: string; guest_phone: string },
+    guest: GuestIdentity
+): boolean {
+    return (
+        reservation.guest_name === guest.name.trim() &&
+        normalizePhone(reservation.guest_phone) === normalizePhone(guest.phone)
+    );
+}
+
+export type ReleaseHoldError = "NOT_FOUND" | "NOT_HOLD" | "GUEST_MISMATCH";
 export type ReleaseHoldResult = { ok: true } | { ok: false; error: ReleaseHoldError };
 
 // DELETE /reservations/:id/hold: 결제 전 홀드를 고객이 직접 해제하는 경우. 결제된 금액이 없으므로 환불 계산이 필요없다.
 // EXPIRED는 hold_expire_at 시간 초과로 인한 "자동" 만료(expireDueHolds)에만 쓰고,
 // 이 경로처럼 사용자가 직접 취소 버튼을 눌러 능동적으로 끝낸 경우는 결제 전/후 여부와 무관하게 CANCELLED로 남긴다.
-export async function releaseHold(reservationId: string): Promise<ReleaseHoldResult> {
+// guest는 선택 인자다: 결제 전 HOLD는 돈이 오가지 않아 소유자 검증의 실익이 적고, /checkout/:reservationId
+// 페이지는 예약 생성 직후 같은 세션에서 곧바로 접근하는 흐름이라 이름/전화번호를 다시 물어볼 입력창이 없다
+// (DEC-006 갱신). 값이 전달된 경우(예: 예약 조회 화면에서 홀드 해제)에는 그래도 일치 여부를 검증한다.
+export async function releaseHold(
+    reservationId: string,
+    guest?: GuestIdentity
+): Promise<ReleaseHoldResult> {
     const { data: reservation } = await supabaseAdmin
         .from("reservations")
-        .select("id, status")
+        .select("id, status, guest_name, guest_phone")
         .eq("id", reservationId)
         .single();
 
     if (!reservation) return { ok: false, error: "NOT_FOUND" };
+    if (guest && !isGuestOwner(reservation, guest)) return { ok: false, error: "GUEST_MISMATCH" };
     if (reservation.status !== "HOLD") return { ok: false, error: "NOT_HOLD" };
 
     const { error } = await supabaseAdmin
@@ -54,21 +80,25 @@ async function calculatePolicyRefund(reservation: {
     return { refundPercent, refundAmount };
 }
 
-export type RefundPreviewError = "NOT_FOUND" | "NOT_CANCELLABLE";
+export type RefundPreviewError = "NOT_FOUND" | "NOT_CANCELLABLE" | "GUEST_MISMATCH";
 export type RefundPreviewResult =
     | { ok: true; refundPercent: number; refundAmount: number; totalPrice: number }
     | { ok: false; error: RefundPreviewError };
 
 // GET /reservations/:id/cancel: 실제로 취소하기 전에 환불 규정 기준 예상 환불액을 미리 보여주기 위한 조회 전용 함수.
-// 상태를 변경하지 않으며, PG 환불도 호출하지 않는다.
-export async function previewRefund(reservationId: string): Promise<RefundPreviewResult> {
+// 상태를 변경하지 않으며, PG 환불도 호출하지 않는다. 예약 소유자가 아니면 예상 환불액(금액 정보)도 보여주지 않는다.
+export async function previewRefund(
+    reservationId: string,
+    guest: GuestIdentity
+): Promise<RefundPreviewResult> {
     const { data: reservation } = await supabaseAdmin
         .from("reservations")
-        .select("id, status, check_in, total_price, property_id")
+        .select("id, status, check_in, total_price, property_id, guest_name, guest_phone")
         .eq("id", reservationId)
         .single();
 
     if (!reservation) return { ok: false, error: "NOT_FOUND" };
+    if (!isGuestOwner(reservation, guest)) return { ok: false, error: "GUEST_MISMATCH" };
     if (reservation.status !== "CONFIRMED") return { ok: false, error: "NOT_CANCELLABLE" };
 
     const { refundPercent, refundAmount } = await calculatePolicyRefund(reservation);
@@ -80,7 +110,8 @@ export type CancelError =
     | "NOT_FOUND"
     | "NOT_CANCELLABLE"
     | "PAYMENT_NOT_FOUND"
-    | "INVALID_OVERRIDE_AMOUNT";
+    | "INVALID_OVERRIDE_AMOUNT"
+    | "GUEST_MISMATCH";
 export type CancelResult =
     | { ok: true; refundPercent: number | null; refundAmount: number }
     | { ok: false; error: CancelError };
@@ -89,6 +120,10 @@ export interface CancelOptions {
     reason?: string;
     // FR-7 AC2: 관리자가 환불 규정과 다른 금액으로 수동 환불하는 예외 경로. 지정 시 정책 계산을 건너뛰고 이 금액을 그대로 사용한다.
     overrideRefundAmount?: number;
+    // 고객이 직접 취소하는 경로(POST /reservations/:id/cancel)에서만 전달.
+    // 지정하면 예약자명+전화번호가 DB 레코드와 일치할 때만 취소를 진행한다.
+    // 관리자 취소(PATCH /admin/.../cancel)는 Supabase Auth 세션으로 이미 인증되므로 전달하지 않는다.
+    verifyGuest?: GuestIdentity;
 }
 
 // POST /reservations/:id/cancel, PATCH /admin/reservations/:id/cancel: 결제 완료(CONFIRMED)된 예약의 고객/관리자 취소.
@@ -101,11 +136,14 @@ export async function cancelReservation(
 ): Promise<CancelResult> {
     const { data: reservation } = await supabaseAdmin
         .from("reservations")
-        .select("id, status, check_in, total_price, property_id")
+        .select("id, status, check_in, total_price, property_id, guest_name, guest_phone")
         .eq("id", reservationId)
         .single();
 
     if (!reservation) return { ok: false, error: "NOT_FOUND" };
+    if (options.verifyGuest && !isGuestOwner(reservation, options.verifyGuest)) {
+        return { ok: false, error: "GUEST_MISMATCH" };
+    }
     if (reservation.status !== "CONFIRMED") return { ok: false, error: "NOT_CANCELLABLE" };
 
     const { data: payment, error: paymentError } = await supabaseAdmin

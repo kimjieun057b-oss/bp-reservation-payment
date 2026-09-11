@@ -25,6 +25,7 @@ export async function POST(request: Request) {
                 guest_count,
                 status,
                 total_price,
+                refund_amount,
                 hold_expire_at,
                 created_at,
                 room_types ( name ),

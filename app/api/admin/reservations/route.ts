@@ -45,6 +45,7 @@ export async function GET(request: Request) {
                 status,
                 total_price,
                 refund_amount,
+                cancel_reason,
                 created_at,
                 room_types ( name ),
                 rooms ( name ),

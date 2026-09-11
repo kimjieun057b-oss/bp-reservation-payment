@@ -40,6 +40,7 @@ export default function CheckoutPanel({ reservationId }: CheckoutPanelProps) {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [cancelling, setCancelling] = useState(false);
     const [cancelError, setCancelError] = useState<string | null>(null);
+    const [cancelMessage, setCancelMessage] = useState<string | null>(null);
     const [paying, setPaying] = useState(false);
     const [payError, setPayError] = useState<string | null>(null);
     const [completeMessage, setCompleteMessage] = useState<string | null>(null);
@@ -136,7 +137,7 @@ export default function CheckoutPanel({ reservationId }: CheckoutPanelProps) {
             const res = await fetch(`/api/reservations/${reservationId}/hold`, { method: "DELETE" });
             const result = await res.json();
             if (!res.ok) throw new Error(result.message ?? "취소에 실패했습니다.");
-            router.push(reservation ? `/rooms/${reservation.room_type_id}` : "/");
+            setCancelMessage("예약 취소가 완료되었습니다.");
         } catch (err) {
             setCancelError(err instanceof Error ? err.message : "취소에 실패했습니다.");
         } finally {
@@ -148,6 +149,11 @@ export default function CheckoutPanel({ reservationId }: CheckoutPanelProps) {
         setCompleteMessage(null);
         router.push("/my-reservations");
     }, [router]);
+
+    const closeCancelToast = useCallback(() => {
+        setCancelMessage(null);
+        router.push(reservation ? `/rooms/${reservation.room_type_id}` : "/");
+    }, [router, reservation]);
 
     if (loadError) {
         return <p className="text-sm text-red-600">{loadError}</p>;
@@ -247,6 +253,7 @@ export default function CheckoutPanel({ reservationId }: CheckoutPanelProps) {
             </section>
             <Toast vaild={completeMessage} setVaild={closeCompleteToast} />
             <Toast vaild={payError} setVaild={setPayError} />
+            <Toast vaild={cancelMessage} setVaild={closeCancelToast} />
         </>
     );
 }

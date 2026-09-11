@@ -20,7 +20,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const { data: roomType, error: roomTypeError } = await supabaseAdmin
         .from("room_types")
-        .select("id, name, base_price, capacity_standard, capacity_max")
+        .select("id, name, base_price, capacity_standard, capacity_max, property_id")
         .eq("id", id)
         .eq("is_active", true)
         .single();
@@ -32,11 +32,28 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         );
     }
 
-    const { count: totalRooms } = await supabaseAdmin
+    // FR-4 AC2: 예약 신청 전에 환불 규정을 미리 안내하기 위해 함께 내려준다 (days_before 내림차순).
+    const { data: refundPolicies } = await supabaseAdmin
+        .from("refund_policies")
+        .select("days_before, refund_percent")
+        .eq("property_id", roomType.property_id)
+        .order("days_before", { ascending: false });
+
+    // FR-9 AC2: 점검(blocked_from~blocked_until) 중인 유닛은 그 기간만 재고에서 제외해야 하므로,
+    // 전체 개수(count)가 아니라 유닛별 점검 구간을 받아와 날짜별로 직접 계산한다.
+    const { data: typeRooms } = await supabaseAdmin
         .from("rooms")
-        .select("id", { count: "exact", head: true })
+        .select("id, blocked_from, blocked_until")
         .eq("room_type_id", id)
         .eq("is_active", true);
+
+    function activeRoomCount(iso: string): number {
+        return (typeRooms ?? []).filter((room) => {
+            if (!room.blocked_from) return true;
+            const blockedUntil = room.blocked_until ?? "9999-12-31";
+            return !(iso >= room.blocked_from && iso <= blockedUntil);
+        }).length;
+    }
 
     const { data: rules } = await supabaseAdmin
         .from("price_rules")
@@ -69,7 +86,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
         days.push({
             date: iso,
-            available: (totalRooms ?? 0) > bookedCount,
+            available: activeRoomCount(iso) > bookedCount,
             isPeak,
             isWeekend,
             price: resolveNightlyPrice(cursor, roomType.base_price, priceRules),
@@ -80,7 +97,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({
         room_type: roomType,
-        total_rooms: totalRooms ?? 0,
+        total_rooms: typeRooms?.length ?? 0,
         days,
+        refund_policies: refundPolicies ?? [],
     });
 }

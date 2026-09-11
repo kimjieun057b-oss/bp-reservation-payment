@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { enumerateNights, toISODate } from "@/lib/reservations/pricing";
+import type { RefundPolicyTier } from "@/lib/reservations/refund";
 import Toast from "@/components/ui/Toast";
 
 export interface BookingCalendarProps {
@@ -34,12 +35,26 @@ interface AvailabilityResponse {
     room_type: RoomTypeInfo;
     total_rooms: number;
     days: DayInfo[];
+    refund_policies: RefundPolicyTier[];
 }
 
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
 function monthKeyOf(year: number, month: number): string {
     return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+// monthsCache는 객실별로 따로 캐시해야 한다 - roomTypeId 없이 "연-월"만 키로 쓰면
+// 다른 객실로 전환할 때 이전 객실의 캐시와 섞이거나(잘못된 가격/가용성 표시),
+// 캐시를 통째로 비워야 해서(아래 selectRoomType 참고) 매번 화면이 깜빡였다.
+function monthCacheKey(roomTypeId: string, year: number, month: number): string {
+    return `${roomTypeId}:${monthKeyOf(year, month)}`;
+}
+
+// FR-4 AC2: 예약 신청 전에 환불 규정을 미리 보여주기 위한 안내 문구 생성.
+function formatRefundTier(tier: RefundPolicyTier): string {
+    const when = tier.days_before === 0 ? "당일 취소" : `체크인 ${tier.days_before}일 전까지 취소`;
+    return tier.refund_percent > 0 ? `${when}: ${tier.refund_percent}% 환불` : `${when}: 환불 불가`;
 }
 
 export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
@@ -56,7 +71,9 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
     const [viewYear, setViewYear] = useState(today.getFullYear());
     const [viewMonth, setViewMonth] = useState(today.getMonth() + 1); // 1~12
 
-    const [roomType, setRoomType] = useState<RoomTypeInfo | null>(null);
+    // roomTypeId별로 캐시해서, 이미 본 적 있는 객실/달로 돌아오면 재요청 없이 즉시 보여준다.
+    const [roomTypeCache, setRoomTypeCache] = useState<Record<string, RoomTypeInfo>>({});
+    const [refundPoliciesCache, setRefundPoliciesCache] = useState<Record<string, RefundPolicyTier[]>>({});
     const [monthsCache, setMonthsCache] = useState<Record<string, DayInfo[]>>({});
     const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -85,11 +102,11 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // 객실 선택/재선택은 여기 한 곳에서만 처리한다 (이전 객실의 달력 캐시가 새 객실에 섞이지 않도록 초기화).
+    // 객실 선택/재선택. roomType/달력 데이터는 이제 roomTypeId별로 캐시되어 있어서 여기서 비울 필요가 없다
+    // (예전엔 매번 캐시를 통째로 비워서, 객실을 바꿀 때마다 달력이 빈 화면으로 깜빡였다).
+    // 날짜 선택만 새 객실 기준으로 다시 잡아야 하므로 초기화한다.
     function selectRoomType(id: string | null) {
         setSelectedRoomTypeId(id);
-        setMonthsCache({});
-        setRoomType(null);
         setCheckIn(null);
         setCheckOut(null);
         setLoadError(null);
@@ -122,17 +139,21 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomTypeId, selectedRoomTypeId]);
 
-    const currentKey = monthKeyOf(viewYear, viewMonth);
-    const currentDays = monthsCache[currentKey];
+    const currentKey = selectedRoomTypeId ? monthCacheKey(selectedRoomTypeId, viewYear, viewMonth) : null;
+    const currentDays = currentKey ? monthsCache[currentKey] : undefined;
+    const roomType = selectedRoomTypeId ? (roomTypeCache[selectedRoomTypeId] ?? null) : null;
+    const refundPolicies = selectedRoomTypeId ? (refundPoliciesCache[selectedRoomTypeId] ?? []) : [];
     const needsRoomTypeSelection = !roomTypeId && !selectedRoomTypeId;
     const loading = !!selectedRoomTypeId && !currentDays && !loadError;
 
     useEffect(() => {
-        if (!selectedRoomTypeId || monthsCache[currentKey]) return;
+        if (!selectedRoomTypeId || !currentKey || monthsCache[currentKey]) return;
 
         let cancelled = false;
+        const requestedRoomTypeId = selectedRoomTypeId;
+        const requestedKey = currentKey;
 
-        fetch(`/api/room-types/${selectedRoomTypeId}/availability?year=${viewYear}&month=${viewMonth}`)
+        fetch(`/api/room-types/${requestedRoomTypeId}/availability?year=${viewYear}&month=${viewMonth}`)
             .then(async (res) => {
                 const result = await res.json();
                 if (!res.ok) throw new Error(result.message ?? "예약 가능 정보를 불러오지 못했습니다.");
@@ -141,8 +162,9 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
             .then((result) => {
                 if (cancelled) return;
                 setLoadError(null);
-                setRoomType(result.room_type);
-                setMonthsCache((prev) => ({ ...prev, [currentKey]: result.days }));
+                setRoomTypeCache((prev) => ({ ...prev, [requestedRoomTypeId]: result.room_type }));
+                setRefundPoliciesCache((prev) => ({ ...prev, [requestedRoomTypeId]: result.refund_policies }));
+                setMonthsCache((prev) => ({ ...prev, [requestedKey]: result.days }));
             })
             .catch((err) => {
                 if (!cancelled) setLoadError(err.message);
@@ -201,8 +223,10 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
     const nights = checkIn && checkOut ? enumerateNights(checkIn, checkOut) : [];
 
     const totalPrice = nights.reduce((sum, nightDate) => {
+        if (!selectedRoomTypeId) return sum;
         const iso = toISODate(nightDate);
-        const info = monthsCache[iso.slice(0, 7)]?.find((d) => d.date === iso);
+        const [year, month] = iso.split("-").map(Number);
+        const info = monthsCache[monthCacheKey(selectedRoomTypeId, year, month)]?.find((d) => d.date === iso);
         return sum + (info?.price ?? 0);
     }, 0);
 
@@ -280,54 +304,72 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
 
                 {loadError && <p className="text-sm text-red-600 mb-3">{loadError}</p>}
 
-                <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted mb-2">
-                    {WEEKDAY_LABELS.map((label, i) => (
-                        <div key={label} className={i === 0 ? "text-red-500" : i === 6 ? "text-primary" : undefined}>
-                            {label}
+                <div className="relative">
+                    {/* 이미 캐시된 객실/달로 돌아오면 currentDays가 바로 채워져 있어 이 오버레이 없이 즉시 표시된다.
+                        처음 보는 객실/달일 때만 이전 화면 위에 살짝 덮어 "전체 예약불가"처럼 보이는 깜빡임을 막는다. */}
+                    {loading && (
+                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 rounded-lg">
+                            <span className="text-xs text-muted">불러오는 중...</span>
                         </div>
-                    ))}
-                </div>
+                    )}
 
-                <div className="grid grid-cols-7 gap-1">
-                    {leadingBlanks.map((i) => (
-                        <div key={`blank-${i}`} />
-                    ))}
+                    <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted mb-2">
+                        {WEEKDAY_LABELS.map((label, i) => (
+                            <div key={label} className={i === 0 ? "text-red-500" : i === 6 ? "text-primary" : undefined}>
+                                {label}
+                            </div>
+                        ))}
+                    </div>
 
-                    {dateCells.map((date) => {
-                        const iso = `${viewYear}-${String(viewMonth).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
-                        const day = currentDays?.find((d) => d.date === iso);
-                        const isPast = iso < todayISO;
-                        const isSelectedStart = iso === checkIn;
-                        const isSelectedEnd = iso === checkOut;
-                        const isInRange = !!checkIn && !!checkOut && iso > checkIn && iso < checkOut;
-                        const disabled = isPast || !day || !day.available;
+                    <div className="grid grid-cols-7 gap-1">
+                        {leadingBlanks.map((i) => (
+                            <div key={`blank-${i}`} />
+                        ))}
 
-                        return (
-                            <button
-                                key={iso}
-                                type="button"
-                                disabled={disabled}
-                                onClick={() => day && handleDateClick(day)}
-                                className={`relative aspect-square rounded-lg text-sm flex flex-col items-center justify-center gap-0.5 transition-colors
-                                    ${disabled ? "text-muted/50 cursor-not-allowed" : "cursor-pointer hover:bg-surface"}
-                                    ${isSelectedStart || isSelectedEnd ? "bg-primary text-white hover:bg-primary" : ""}
-                                    ${isInRange ? "bg-primary/15" : ""}`}
-                            >
-                                <span>{date}</span>
-                                {(day?.isPeak || day?.isWeekend) && !disabled && !isSelectedStart && !isSelectedEnd && (
-                                    <span className="text-[9px] leading-none text-primary">
-                                        {day?.isPeak ? "성" : "주"}
-                                    </span>
-                                )}
-                            </button>
-                        );
-                    })}
+                        {dateCells.map((date) => {
+                            const iso = `${viewYear}-${String(viewMonth).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
+                            const day = currentDays?.find((d) => d.date === iso);
+                            const isPast = iso < todayISO;
+                            const isSelectedStart = iso === checkIn;
+                            const isSelectedEnd = iso === checkOut;
+                            const isInRange = !!checkIn && !!checkOut && iso > checkIn && iso < checkOut;
+                            // FR-1 AC3: 예약 마감(재고 소진)은 과거 날짜와 구분해 "마감" 배지로 명확히 표시한다.
+                            const isSoldOut = !isPast && !!day && !day.available;
+                            const disabled = isPast || !day || !day.available;
+
+                            return (
+                                <button
+                                    key={iso}
+                                    type="button"
+                                    disabled={disabled}
+                                    aria-disabled={disabled}
+                                    aria-label={isSoldOut ? `${date}일, 마감` : undefined}
+                                    onClick={() => day && handleDateClick(day)}
+                                    className={`relative aspect-square rounded-lg text-sm flex flex-col items-center justify-center gap-0.5 transition-colors
+                                        ${disabled ? "text-muted/50 cursor-not-allowed" : "cursor-pointer hover:bg-surface"}
+                                        ${isSoldOut ? "bg-gray-100" : ""}
+                                        ${isSelectedStart || isSelectedEnd ? "bg-primary text-white hover:bg-primary" : ""}
+                                        ${isInRange ? "bg-primary/15" : ""}`}
+                                >
+                                    <span>{date}</span>
+                                    {isSoldOut ? (
+                                        <span className="text-[9px] leading-none text-muted font-medium">마감</span>
+                                    ) : (
+                                        (day?.isPeak || day?.isWeekend) && !disabled && !isSelectedStart && !isSelectedEnd && (
+                                            <span className="text-[9px] leading-none text-primary">
+                                                {day?.isPeak ? "성" : "주"}
+                                            </span>
+                                        )
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
 
                 {needsRoomTypeSelection && (
                     <p className="text-xs text-muted mt-3">오른쪽에서 객실을 먼저 선택해주세요.</p>
                 )}
-                {loading && <p className="text-xs text-muted mt-3">불러오는 중...</p>}
 
                 <div className="flex flex-wrap gap-4 mt-6 text-xs text-muted">
                     <span className="flex items-center gap-1.5">
@@ -337,7 +379,7 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                         <span className="inline-block w-3 h-3 rounded-full border border-gray-300" /> 예약 가능
                     </span>
                     <span className="flex items-center gap-1.5">
-                        <span className="inline-block w-3 h-3 rounded-full bg-gray-200" /> 예약 불가
+                        <span className="inline-block w-3 h-3 rounded-full bg-gray-100 border border-gray-300" /> 마감
                     </span>
                     <span>성 성수기</span>
                     <span>주 주말</span>
@@ -512,6 +554,15 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                 )}
             </div>
         </div>
+
+        {refundPolicies.length > 0 && (
+            <div className="card p-5 text-xs text-muted space-y-1 mt-6">
+                <p className="text-title font-medium mb-1">환불 규정</p>
+                {refundPolicies.map((tier) => (
+                    <p key={tier.days_before}>{formatRefundTier(tier)}</p>
+                ))}
+            </div>
+        )}
         <Toast vaild={submitError} setVaild={setSubmitError} />
         </>
     );
