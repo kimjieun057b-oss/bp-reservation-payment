@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { calculateTotalPrice } from "./pricing";
+import { expireDueHolds } from "./expire";
 import type { Reservation } from "./types";
 
 // FR-2: 홀드 유지시간은 프로젝트별 환경설정 값으로 변경 가능해야 한다 (기본 24시간, DEC-001).
@@ -31,6 +32,15 @@ export type CreateHoldResult =
 export async function createHold(input: CreateHoldInput): Promise<CreateHoldResult> {
     if (input.check_out <= input.check_in) {
         return { ok: false, error: "INVALID_DATES" };
+    }
+
+    // FR-12 보정: 외부 스케줄러가 아직 못 돈 구간이 있어도, 새 홀드를 시도하는 이 순간
+    // 이미 만료된 HOLD는 먼저 정리해서 실제로는 비어있는 유닛이 ROOM_UNAVAILABLE로 잘못
+    // 거부되지 않도록 한다.
+    try {
+        await expireDueHolds();
+    } catch (err) {
+        console.error("[createHold] expireDueHolds failed", err);
     }
 
     const { data: roomType } = await supabaseAdmin
