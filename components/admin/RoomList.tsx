@@ -16,6 +16,8 @@ interface Room {
     blocked_from: string | null;
     blocked_until: string | null;
     is_occupied: boolean;
+    is_awaiting_checkin: boolean;
+    is_holding: boolean;
 }
 
 interface RoomListProps {
@@ -187,6 +189,8 @@ export default function RoomList({ roomTypeId, onRoomCountChanged }: RoomListPro
                                                 {room.name}
                                                 <span className={`badge ${status.badge}`}>{status.label}</span>
                                                 {room.is_occupied && <span className="badge badge-accent">사용중</span>}
+                                                {room.is_awaiting_checkin && <span className="badge badge-info">결제완료</span>}
+                                                {room.is_holding && <span className="badge badge-warning">결제대기중</span>}
                                             </p>
                                             {room.blocked_from && (
                                                 <p className="text-xs text-muted mt-0.5">

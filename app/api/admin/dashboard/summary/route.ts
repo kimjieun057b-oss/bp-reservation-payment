@@ -35,6 +35,31 @@ function toKstMonthKey(isoTimestamp: string) {
     return monthKey(kst.getUTCFullYear(), kst.getUTCMonth() + 1);
 }
 
+function dateKey(year: number, month: number, day: number) {
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function kstDateStartISO(year: number, month: number, day: number) {
+    return `${dateKey(year, month, day)}T00:00:00+09:00`;
+}
+
+// KST 기준 "오늘"의 연/월/일과 요일(0=일 ~ 6=토)을 구한다. currentKstMonth()와 동일한 KST 보정 방식.
+function currentKstDate() {
+    const kstNow = new Date(Date.now() + KST_OFFSET_MS);
+    return {
+        year: kstNow.getUTCFullYear(),
+        month: kstNow.getUTCMonth() + 1,
+        day: kstNow.getUTCDate(),
+        weekday: kstNow.getUTCDay(),
+    };
+}
+
+function addDays(year: number, month: number, day: number, delta: number) {
+    const d = new Date(Date.UTC(year, month - 1, day));
+    d.setUTCDate(d.getUTCDate() + delta);
+    return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+}
+
 export async function GET(request: Request) {
     // middleware.ts는 /admin 페이지만 보호하므로, /api/admin 라우트는 여기서 동일하게 Supabase Auth 세션을 직접 확인한다.
     const supabase = await createClient();
@@ -98,6 +123,40 @@ export async function GET(request: Request) {
 
         if (refundsError) throw new Error(refundsError.message);
 
+        // FR-10: 오늘/이번주 예약 수 - 예약이 "접수된" 시점(created_at) 기준으로 세서,
+        // 체크인 예정 건수가 아니라 실제 유입된 신규 예약 활동량을 보여준다(홀드/확정/취소 등 상태 무관 전체 건수).
+        const today = currentKstDate();
+        const tomorrow = addDays(today.year, today.month, today.day, 1);
+        const todayFrom = dateKey(today.year, today.month, today.day);
+        const todayStartISO = kstDateStartISO(today.year, today.month, today.day);
+        const todayEndISO = kstDateStartISO(tomorrow.year, tomorrow.month, tomorrow.day);
+
+        // 이번주 = 월요일 시작 기준 (weekday: 0=일 ~ 6=토 -> 월요일로부터 지난 일수)
+        const daysSinceMonday = (today.weekday + 6) % 7;
+        const weekStart = addDays(today.year, today.month, today.day, -daysSinceMonday);
+        const weekEndExclusive = addDays(weekStart.year, weekStart.month, weekStart.day, 7);
+        const weekEndInclusive = addDays(weekStart.year, weekStart.month, weekStart.day, 6);
+        const weekFrom = dateKey(weekStart.year, weekStart.month, weekStart.day);
+        const weekTo = dateKey(weekEndInclusive.year, weekEndInclusive.month, weekEndInclusive.day);
+        const weekStartISO = kstDateStartISO(weekStart.year, weekStart.month, weekStart.day);
+        const weekEndISO = kstDateStartISO(weekEndExclusive.year, weekEndExclusive.month, weekEndExclusive.day);
+
+        const { count: todayCount, error: todayError } = await supabaseAdmin
+            .from("reservations")
+            .select("id", { count: "exact", head: true })
+            .gte("created_at", todayStartISO)
+            .lt("created_at", todayEndISO);
+
+        if (todayError) throw new Error(todayError.message);
+
+        const { count: weekCount, error: weekError } = await supabaseAdmin
+            .from("reservations")
+            .select("id", { count: "exact", head: true })
+            .gte("created_at", weekStartISO)
+            .lt("created_at", weekEndISO);
+
+        if (weekError) throw new Error(weekError.message);
+
         const revenueByMonth = new Map<string, number>();
         for (const p of payments ?? []) {
             if (!p.paid_at) continue;
@@ -128,6 +187,8 @@ export async function GET(request: Request) {
             refund: current.refund,
             net: current.net,
             trend,
+            today: { count: todayCount ?? 0, date_from: todayFrom, date_to: todayFrom },
+            thisWeek: { count: weekCount ?? 0, date_from: weekFrom, date_to: weekTo },
         });
     } catch (err) {
         console.error("[GET /api/admin/dashboard/summary]", err);

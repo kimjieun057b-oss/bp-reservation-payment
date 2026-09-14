@@ -1,7 +1,10 @@
 // FR-8 연장: 관리자가 예약관리에서 확인하기 어려운 "이번 달 매출/환불액/순매출"과 최근 추이를
 // Dashboard(ERP 역할)에서만 집계해서 보여준다. 예약 건별 상세(취소 사유, 개별 환불액)는 예약관리 화면 책임.
+// FR-10: 오늘/이번주 예약 수 카드는 클릭하면 그 건수를 구성한 예약 목록(예약관리, created_from/to 필터)으로
+// 드릴다운해서, 숫자만 보고 끝나는 게 아니라 근거를 바로 확인할 수 있게 한다.
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import Loading from "@/components/ui/Loading";
 
 interface TrendPoint {
@@ -11,12 +14,20 @@ interface TrendPoint {
     net: number;
 }
 
+interface PeriodCount {
+    count: number;
+    date_from: string;
+    date_to: string;
+}
+
 interface DashboardSummaryData {
     month: string;
     revenue: number;
     refund: number;
     net: number;
     trend: TrendPoint[];
+    today: PeriodCount;
+    thisWeek: PeriodCount;
 }
 
 const won = (n: number) => `${n.toLocaleString()}원`;
@@ -109,6 +120,23 @@ export default function DashboardSummary() {
                 <p className="card p-6 text-sm text-center text-muted">{error}</p>
             ) : data ? (
                 <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Link
+                            href={`/admin/reservations?created_from=${data.today.date_from}&created_to=${data.today.date_to}`}
+                            className="card p-6 block hover:opacity-80 transition-opacity"
+                        >
+                            <p className="text-sm text-muted mb-2">오늘 예약 수</p>
+                            <p className="text-2xl font-bold text-title">{data.today.count.toLocaleString()}건</p>
+                        </Link>
+                        <Link
+                            href={`/admin/reservations?created_from=${data.thisWeek.date_from}&created_to=${data.thisWeek.date_to}`}
+                            className="card p-6 block hover:opacity-80 transition-opacity"
+                        >
+                            <p className="text-sm text-muted mb-2">이번주 예약 수</p>
+                            <p className="text-2xl font-bold text-title">{data.thisWeek.count.toLocaleString()}건</p>
+                        </Link>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="card p-6">
                             <p className="text-sm text-muted mb-2">매출</p>
