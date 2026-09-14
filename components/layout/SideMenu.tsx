@@ -15,6 +15,17 @@ function DashboardIcon() {
     );
 }
 
+// 체크인/체크아웃 아이콘 (출입문 + 화살표)
+function CheckInOutIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M9.5 1.5H3.5C2.94772 1.5 2.5 1.94772 2.5 2.5V13.5C2.5 14.0523 2.94772 14.5 3.5 14.5H9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M11 5.5L14 8L11 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M6 8H14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+    );
+}
+
 // 예약 관리 아이콘 (캘린더)
 function ReservationsIcon() {
     return (
@@ -41,6 +52,7 @@ function RoomTypesIcon() {
 
 const ADMIN_NAV_ICONS: { [key: string]: () => React.ReactElement } = {
     dashboard: DashboardIcon,
+    checkinout: CheckInOutIcon,
     reservations: ReservationsIcon,
     room_types: RoomTypesIcon,
 };

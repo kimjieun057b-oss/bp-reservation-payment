@@ -12,6 +12,7 @@ export const USER_CATEGORY : { [key: string]: { title: string; categories?: {nam
 // 예: reservation: { title: "예약 관리", categories: [{ name: "예약 리스트", url: "list" }] }
 export const ADMIN_CATEGORY : { [key: string]: { title: string; categories?: {name: string, url: string}[], banner?: string }} = {
     dashboard: {title: "대시보드"},
+    checkinout: {title: "체크인/체크아웃"},
     reservations: {title: "예약 관리"},
     room_types: {title: "객실 관리"},
 }

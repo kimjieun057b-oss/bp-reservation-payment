@@ -1,0 +1,41 @@
+name: Expire due holds (FR-12)
+
+# Vercel Hobby 플랜은 1분 주기 Cron Jobs를 지원하지 않으므로(Pro 플랜부터 가능),
+# 배포된 앱의 /api/cron/expire-holds 엔드포인트를 GitHub Actions가 대신 주기적으로 호출한다.
+# vercel.json에는 동일 엔드포인트를 하루 1회 호출하는 보조 Cron만 남겨둔다.
+#
+# 사용 전 준비 (배포 후 1회):
+#   1. GitHub 저장소 Settings > Secrets and variables > Actions 에 다음 두 개를 등록한다.
+#      - APP_URL      : 배포된 프로덕션 도메인 (예: https://your-app.vercel.app, 마지막 슬래시 없이)
+#      - CRON_SECRET  : Vercel 프로젝트 환경변수 CRON_SECRET과 동일한 값
+#   2. 필요하면 아래 schedule의 주기를 조정한다(현재 1시간 주기).
+#      실시간 정확도는 각 API가 응답 전에 호출하는 lazy expiration(expireDueHolds)이 보완하므로,
+#      이 워크플로우는 트래픽이 없는 시간에도 전체 데이터가 정리되도록 하는 백업 성격이다.
+
+on:
+  schedule:
+    - cron: "0 * * * *" # 매시 정각 (UTC 기준, GitHub Actions 스케줄은 UTC로 해석됨)
+  workflow_dispatch: {} # 필요 시 Actions 탭에서 수동 실행 가능
+
+jobs:
+  expire-holds:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call expire-holds endpoint
+        run: |
+          if [ -z "${{ secrets.APP_URL }}" ] || [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "APP_URL 또는 CRON_SECRET 시크릿이 설정되지 않았습니다. 저장소 Settings > Secrets에 등록해주세요."
+            exit 1
+          fi
+
+          http_status=$(curl -s -o response.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/expire-holds")
+
+          echo "HTTP status: $http_status"
+          cat response.json
+
+          if [ "$http_status" -ge 300 ]; then
+            echo "expire-holds 호출 실패 (status=$http_status)"
+            exit 1
+          fi

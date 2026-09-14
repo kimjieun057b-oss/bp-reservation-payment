@@ -18,6 +18,8 @@ export interface Reservation {
     cancelled_at: string | null;
     cancel_reason: string | null;
     refund_amount: number | null;
+    checked_in_at: string | null;
+    checked_out_at: string | null;
     created_at: string;
     updated_at: string;
 }

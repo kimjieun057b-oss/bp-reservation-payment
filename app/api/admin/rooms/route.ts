@@ -3,13 +3,21 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { toISODate } from "@/lib/reservations/pricing";
+import { expireDueHolds } from "@/lib/reservations/expire";
 
 export async function GET(request: Request) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
         return NextResponse.json({ error: "UNAUTHORIZED", message: "관리자 인증이 필요합니다." }, { status: 401 });
+    }
+
+    // FR-12 보정: 외부 스케줄러가 아직 못 돈 구간이 있어도, 객실관리 화면의 '사용중' 표시가
+    // 실제보다 오래 남아있지 않도록 조회 시점에 만료된 홀드를 먼저 정리한다.
+    try {
+        await expireDueHolds();
+    } catch (err) {
+        console.error("[GET /api/admin/rooms] expireDueHolds failed", err);
     }
 
     const { searchParams } = new URL(request.url);
@@ -31,17 +39,18 @@ export async function GET(request: Request) {
 
     const rooms = data ?? [];
 
-    // "사용중" 배지 표시용: 지금 이 순간 기준으로 아직 끝나지 않은(HOLD/CONFIRMED) 예약이 있는 유닛을 표시한다.
-    // 이름변경/비활성화를 막는 기준(hasOverlappingActiveReservation)과 동일한 조건이라, 왜 그 조작들이
-    // 막히는지도 미리 짐작할 수 있게 해준다.
+    // "사용중" 배지 표시용: 프런트에서 실제로 체크인 처리했고 아직 체크아웃 처리하지 않은 유닛만 표시한다.
+    // (예약 날짜 범위가 아니라 /admin/checkinout 페이지의 체크인/체크아웃 처리 여부를 기준으로 한다 —
+    // 그래야 체크인 전 오전이나 체크아웃 이후에도 "사용중"으로 잘못 표시되지 않는다.)
     let occupiedRoomIds = new Set<string>();
     if (rooms.length > 0) {
         const { data: activeReservations } = await supabaseAdmin
             .from("reservations")
             .select("room_id")
             .in("room_id", rooms.map((r) => r.id))
-            .in("status", ["HOLD", "CONFIRMED"])
-            .gt("check_out", toISODate(new Date()));
+            .eq("status", "CONFIRMED")
+            .not("checked_in_at", "is", null)
+            .is("checked_out_at", null);
         occupiedRoomIds = new Set((activeReservations ?? []).map((r) => r.room_id));
     }
 

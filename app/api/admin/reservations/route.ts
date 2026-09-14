@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { ReservationStatus } from "@/lib/reservations/types";
+import { expireDueHolds } from "@/lib/reservations/expire";
 
 const VALID_STATUSES: ReservationStatus[] = ["HOLD", "CONFIRMED", "CANCELLED", "EXPIRED"];
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -33,6 +34,14 @@ export async function GET(request: Request) {
     }
 
     try {
+        // FR-12 보정: 외부 스케줄러가 아직 못 돈 구간이 있어도, 관리자가 목록을 볼 때는
+        // 만료된 홀드를 먼저 정리해서 '결제대기'가 실제보다 오래 남아있지 않도록 한다.
+        try {
+            await expireDueHolds();
+        } catch (err) {
+            console.error("[GET /api/admin/reservations] expireDueHolds failed", err);
+        }
+
         let query = supabaseAdmin
             .from("reservations")
             .select(`

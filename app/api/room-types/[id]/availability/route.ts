@@ -2,10 +2,19 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { classifyDate, resolveNightlyPrice, toISODate, type PriceRule } from "@/lib/reservations/pricing";
+import { expireDueHolds } from "@/lib/reservations/expire";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
     const { searchParams } = new URL(request.url);
+
+    // FR-12 보정: 외부 스케줄러(시간 단위)가 아직 못 돈 구간이 있어도, 가용성을 조회하는 이 순간
+    // 만료된 홀드는 먼저 정리해서 재고에 반영한다. 실패해도 조회 자체는 계속 진행한다.
+    try {
+        await expireDueHolds();
+    } catch (err) {
+        console.error("[GET /api/room-types/[id]/availability] expireDueHolds failed", err);
+    }
 
     const now = new Date();
     const year = Number(searchParams.get("year") ?? now.getUTCFullYear());
