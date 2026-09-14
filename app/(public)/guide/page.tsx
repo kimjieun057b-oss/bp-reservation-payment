@@ -1,5 +1,5 @@
 export default function GuidePage () {
-    return(
+    return (
         <div></div>
     )
 }

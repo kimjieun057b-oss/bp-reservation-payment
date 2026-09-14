@@ -39,23 +39,41 @@ export async function GET(request: Request) {
 
     const rooms = data ?? [];
 
-    // "사용중" 배지 표시용: 프런트에서 실제로 체크인 처리했고 아직 체크아웃 처리하지 않은 유닛만 표시한다.
-    // (예약 날짜 범위가 아니라 /admin/checkinout 페이지의 체크인/체크아웃 처리 여부를 기준으로 한다 —
-    // 그래야 체크인 전 오전이나 체크아웃 이후에도 "사용중"으로 잘못 표시되지 않는다.)
-    let occupiedRoomIds = new Set<string>();
+    // 예약 상태에 따라 서로 다른 배지를 붙인다 (HOLD와 CONFIRMED는 의미가 다르고,
+    // CONFIRMED도 체크인 여부에 따라 "결제완료(체크인 전)"와 "사용중(투숙 중)"으로 나뉜다).
+    // - HOLD: 체크인 개념이 없는 결제 진행 중 상태 → "결제대기중"
+    //   (위에서 expireDueHolds()를 이미 호출했으므로 남아있는 HOLD는 아직 만료 전인 유효한 잠금이다.)
+    // - CONFIRMED + 체크인 전 → "결제완료" (아직 프런트에서 체크인 처리를 안 한 상태)
+    // - CONFIRMED + 체크인 완료 + 체크아웃 전 → "사용중" (실제 투숙 중, /admin/checkinout의 처리 여부가 기준)
+    // - CONFIRMED + 체크아웃 완료 → 세 배지 모두 해당 없음 (다시 빈 방)
+    const occupiedRoomIds = new Set<string>();
+    const awaitingCheckinRoomIds = new Set<string>();
+    const holdingRoomIds = new Set<string>();
     if (rooms.length > 0) {
         const { data: activeReservations } = await supabaseAdmin
             .from("reservations")
-            .select("room_id")
+            .select("room_id, status, checked_in_at, checked_out_at")
             .in("room_id", rooms.map((r) => r.id))
-            .eq("status", "CONFIRMED")
-            .not("checked_in_at", "is", null)
-            .is("checked_out_at", null);
-        occupiedRoomIds = new Set((activeReservations ?? []).map((r) => r.room_id));
+            .in("status", ["HOLD", "CONFIRMED"]);
+
+        for (const r of activeReservations ?? []) {
+            if (r.status === "HOLD") {
+                holdingRoomIds.add(r.room_id);
+            } else if (!r.checked_in_at) {
+                awaitingCheckinRoomIds.add(r.room_id);
+            } else if (!r.checked_out_at) {
+                occupiedRoomIds.add(r.room_id);
+            }
+        }
     }
 
     return NextResponse.json({
-        rooms: rooms.map((r) => ({ ...r, is_occupied: occupiedRoomIds.has(r.id) })),
+        rooms: rooms.map((r) => ({
+            ...r,
+            is_occupied: occupiedRoomIds.has(r.id),
+            is_awaiting_checkin: awaitingCheckinRoomIds.has(r.id),
+            is_holding: holdingRoomIds.has(r.id),
+        })),
     });
 }
 

@@ -1,8 +1,11 @@
 // FR-8 AC1/AC2: 관리자 예약 목록 조회(상태/기간별) + 강제 취소.
 // 목록 조회는 설계문서 4-2 "GET /admin/reservations?status=&date_from=&date_to="를 그대로 사용한다(백엔드는 별도 작업).
 // 강제 취소는 이미 구현된 PATCH /api/admin/reservations/:id/cancel을 그대로 재사용한다.
+// created_from/created_to는 대시보드 "오늘/이번주 예약 수" 카드의 드릴다운 링크(?created_from=&created_to=)를
+// 초기 필터로 반영하기 위한 것으로, URL 쿼리에 있을 때만 사용한다.
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Loading from "@/components/ui/Loading";
 import Pagination from "@/components/ui/Pagination";
 import Toast from "@/components/ui/Toast";
@@ -30,11 +33,19 @@ interface FilterState {
     status: ReservationStatus | "ALL";
     date_from: string;
     date_to: string;
+    created_from: string;
+    created_to: string;
 }
 
 const ITEMS_PER_PAGE = 20;
 
-const DEFAULT_FILTERS: FilterState = { status: "ALL", date_from: "", date_to: "" };
+const DEFAULT_FILTERS: FilterState = {
+    status: "ALL",
+    date_from: "",
+    date_to: "",
+    created_from: "",
+    created_to: "",
+};
 
 const STATUS_LABEL: Record<ReservationStatus, string> = {
     HOLD: "결제 대기",
@@ -67,6 +78,8 @@ async function loadReservationRows(filters: FilterState): Promise<AdminReservati
     if (filters.status !== "ALL") params.set("status", filters.status);
     if (filters.date_from) params.set("date_from", filters.date_from);
     if (filters.date_to) params.set("date_to", filters.date_to);
+    if (filters.created_from) params.set("created_from", filters.created_from);
+    if (filters.created_to) params.set("created_to", filters.created_to);
 
     const response = await fetch(`/api/admin/reservations?${params.toString()}`);
     const result = await response.json();
@@ -79,7 +92,22 @@ async function loadReservationRows(filters: FilterState): Promise<AdminReservati
 }
 
 export default function ReservationList() {
-    const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+    const searchParams = useSearchParams();
+    // 대시보드 드릴다운(?created_from=&created_to=, ?status=)에서 넘어온 값을 초기 필터로 반영한다.
+    const initialFilters = useMemo<FilterState>(() => {
+        const statusParam = searchParams.get("status");
+        const status = statusParam && statusParam in STATUS_LABEL ? (statusParam as ReservationStatus) : "ALL";
+        return {
+            status,
+            date_from: searchParams.get("date_from") ?? "",
+            date_to: searchParams.get("date_to") ?? "",
+            created_from: searchParams.get("created_from") ?? "",
+            created_to: searchParams.get("created_to") ?? "",
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const [filters, setFilters] = useState<FilterState>(initialFilters);
     const [keyword, setKeyword] = useState("");
     const [rows, setRows] = useState<AdminReservationRow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -109,7 +137,7 @@ export default function ReservationList() {
     // 최초 마운트 조회는 setState를 .then/.catch/.finally 콜백 안에서만 호출해
     // "이펙트 내 동기 setState" 린트(react-hooks/set-state-in-effect)를 피한다.
     useEffect(() => {
-        loadReservationRows(DEFAULT_FILTERS)
+        loadReservationRows(initialFilters)
             .then((reservations) => {
                 setError(null);
                 setRows(reservations);
@@ -119,6 +147,7 @@ export default function ReservationList() {
                 setRows([]);
             })
             .finally(() => setLoading(false));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const onSubmitFilters = useCallback(
@@ -251,6 +280,26 @@ export default function ReservationList() {
                         id="date_to"
                         value={filters.date_to}
                         onChange={(e) => setFilters((prev) => ({ ...prev, date_to: e.target.value }))}
+                        className="form-input"
+                    />
+                </div>
+                <div>
+                    <label htmlFor="created_from" className="form-label">접수일(부터)</label>
+                    <input
+                        type="date"
+                        id="created_from"
+                        value={filters.created_from}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, created_from: e.target.value }))}
+                        className="form-input"
+                    />
+                </div>
+                <div>
+                    <label htmlFor="created_to" className="form-label">접수일(까지)</label>
+                    <input
+                        type="date"
+                        id="created_to"
+                        value={filters.created_to}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, created_to: e.target.value }))}
                         className="form-input"
                     />
                 </div>

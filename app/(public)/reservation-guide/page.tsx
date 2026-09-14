@@ -1,5 +1,5 @@
 export default function ReservationGuidePage () {
-    return(
+    return (
         <div></div>
     )
 }
