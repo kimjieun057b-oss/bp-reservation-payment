@@ -102,27 +102,6 @@ export async function GET(request: Request) {
     const rangeEndISO = kstMonthStartISO(rangeEndExclusive.year, rangeEndExclusive.month);
 
     try {
-        // 매출 = 결제 완료(+환불 처리됐더라도 결제 자체는 있었던) 금액을 결제일 기준으로 집계.
-        const { data: payments, error: paymentsError } = await supabaseAdmin
-            .from("payments")
-            .select("amount, paid_at")
-            .in("status", ["PAID", "REFUNDED", "PARTIAL_REFUNDED"])
-            .gte("paid_at", rangeStartISO)
-            .lt("paid_at", rangeEndISO);
-
-        if (paymentsError) throw new Error(paymentsError.message);
-
-        // 환불액 = 취소일 기준으로 집계(결제월과 다를 수 있음 - 일반적인 매출/환불 분리 집계 방식).
-        const { data: refunds, error: refundsError } = await supabaseAdmin
-            .from("reservations")
-            .select("refund_amount, cancelled_at")
-            .not("refund_amount", "is", null)
-            .not("cancelled_at", "is", null)
-            .gte("cancelled_at", rangeStartISO)
-            .lt("cancelled_at", rangeEndISO);
-
-        if (refundsError) throw new Error(refundsError.message);
-
         // FR-10: 오늘/이번주 예약 수 - 예약이 "접수된" 시점(created_at) 기준으로 세서,
         // 체크인 예정 건수가 아니라 실제 유입된 신규 예약 활동량을 보여준다(홀드/확정/취소 등 상태 무관 전체 건수).
         const today = currentKstDate();
@@ -141,20 +120,44 @@ export async function GET(request: Request) {
         const weekStartISO = kstDateStartISO(weekStart.year, weekStart.month, weekStart.day);
         const weekEndISO = kstDateStartISO(weekEndExclusive.year, weekEndExclusive.month, weekEndExclusive.day);
 
-        const { count: todayCount, error: todayError } = await supabaseAdmin
-            .from("reservations")
-            .select("id", { count: "exact", head: true })
-            .gte("created_at", todayStartISO)
-            .lt("created_at", todayEndISO);
+        // 아래 4개 쿼리는 서로 입력값(날짜 범위)만 다를 뿐 결과가 서로에게 의존하지 않으므로
+        // 순차 await 대신 Promise.all로 동시에 날려 왕복 지연을 4배 줄인다.
+        const [
+            { data: payments, error: paymentsError },
+            { data: refunds, error: refundsError },
+            { count: todayCount, error: todayError },
+            { count: weekCount, error: weekError },
+        ] = await Promise.all([
+            // 매출 = 결제 완료(+환불 처리됐더라도 결제 자체는 있었던) 금액을 결제일 기준으로 집계.
+            supabaseAdmin
+                .from("payments")
+                .select("amount, paid_at")
+                .in("status", ["PAID", "REFUNDED", "PARTIAL_REFUNDED"])
+                .gte("paid_at", rangeStartISO)
+                .lt("paid_at", rangeEndISO),
+            // 환불액 = 취소일 기준으로 집계(결제월과 다를 수 있음 - 일반적인 매출/환불 분리 집계 방식).
+            supabaseAdmin
+                .from("reservations")
+                .select("refund_amount, cancelled_at")
+                .not("refund_amount", "is", null)
+                .not("cancelled_at", "is", null)
+                .gte("cancelled_at", rangeStartISO)
+                .lt("cancelled_at", rangeEndISO),
+            supabaseAdmin
+                .from("reservations")
+                .select("id", { count: "exact", head: true })
+                .gte("created_at", todayStartISO)
+                .lt("created_at", todayEndISO),
+            supabaseAdmin
+                .from("reservations")
+                .select("id", { count: "exact", head: true })
+                .gte("created_at", weekStartISO)
+                .lt("created_at", weekEndISO),
+        ]);
 
+        if (paymentsError) throw new Error(paymentsError.message);
+        if (refundsError) throw new Error(refundsError.message);
         if (todayError) throw new Error(todayError.message);
-
-        const { count: weekCount, error: weekError } = await supabaseAdmin
-            .from("reservations")
-            .select("id", { count: "exact", head: true })
-            .gte("created_at", weekStartISO)
-            .lt("created_at", weekEndISO);
-
         if (weekError) throw new Error(weekError.message);
 
         const revenueByMonth = new Map<string, number>();

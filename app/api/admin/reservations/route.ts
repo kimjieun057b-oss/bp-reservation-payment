@@ -10,6 +10,14 @@ import { expireDueHolds } from "@/lib/reservations/expire";
 
 const VALID_STATUSES: ReservationStatus[] = ["HOLD", "CONFIRMED", "CANCELLED", "EXPIRED"];
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+
+// PostgREST의 .or() 필터 문법은 쉼표/괄호를 절 구분자로 쓰므로, 키워드에 포함돼 있으면
+// 걷어내서 검색어가 필터 구문으로 해석되는 걸 막는다.
+function sanitizeKeyword(value: string) {
+    return value.replace(/[,()]/g, "");
+}
 
 // dashboard/summary route.ts의 kstDateStartISO와 동일한 KST 보정 방식.
 function kstDateStartISO(dateStr: string) {
@@ -24,7 +32,7 @@ function addDaysToDateStr(dateStr: string, delta: number) {
 }
 
 export async function GET(request: Request) {
-    // middleware.ts는 /admin 페이지만 보호하므로, /api/admin 라우트는 여기서 동일하게 Supabase Auth 세션을 직접 확인한다.
+    // proxy.ts(구 middleware.ts)가 /api/admin도 보호하지만, 라우트 단위 방어를 위해 여기서도 동일하게 확인한다.
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -37,6 +45,16 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("date_to");
     const createdFrom = searchParams.get("created_from");
     const createdTo = searchParams.get("created_to");
+    const keyword = searchParams.get("keyword")?.trim() ?? "";
+
+    const pageParam = Number(searchParams.get("page") ?? "1");
+    const page = Number.isInteger(pageParam) && pageParam > 0 ? pageParam : 1;
+
+    const pageSizeParam = Number(searchParams.get("page_size") ?? String(DEFAULT_PAGE_SIZE));
+    const pageSize =
+        Number.isInteger(pageSizeParam) && pageSizeParam > 0 && pageSizeParam <= MAX_PAGE_SIZE
+            ? pageSizeParam
+            : DEFAULT_PAGE_SIZE;
 
     if (status && !VALID_STATUSES.includes(status as ReservationStatus)) {
         return NextResponse.json({ error: "INVALID_STATUS", message: "status 값이 올바르지 않습니다." }, { status: 400 });
@@ -82,7 +100,7 @@ export async function GET(request: Request) {
                 room_types ( name ),
                 rooms ( name ),
                 properties ( name )
-            `)
+            `, { count: "exact" })
             .order("created_at", { ascending: false });
 
         if (status) query = query.eq("status", status);
@@ -90,8 +108,16 @@ export async function GET(request: Request) {
         if (dateTo) query = query.lte("check_in", dateTo);
         if (createdFrom) query = query.gte("created_at", kstDateStartISO(createdFrom));
         if (createdTo) query = query.lt("created_at", kstDateStartISO(addDaysToDateStr(createdTo, 1)));
+        if (keyword) {
+            const safeKeyword = sanitizeKeyword(keyword);
+            query = query.or(`guest_name.ilike.%${safeKeyword}%,guest_phone.ilike.%${safeKeyword}%`);
+        }
 
-        const { data, error } = await query;
+        // 목록 전체를 매번 가져오는 대신 서버에서 페이지 단위로만 잘라 응답 크기와 쿼리 비용을 줄인다.
+        const offset = (page - 1) * pageSize;
+        query = query.range(offset, offset + pageSize - 1);
+
+        const { data, error, count } = await query;
 
         if (error) {
             console.error("[GET /api/admin/reservations]", error.message);
@@ -101,7 +127,7 @@ export async function GET(request: Request) {
             );
         }
 
-        return NextResponse.json({ reservations: data ?? [] });
+        return NextResponse.json({ reservations: data ?? [], total: count ?? 0, page, page_size: pageSize });
     } catch (err) {
         console.error("[GET /api/admin/reservations]", err);
         return NextResponse.json(

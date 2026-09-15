@@ -1,11 +1,11 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface UseUpdateOptions {
-    onSuccess?: (result: any) => void;
+    onSuccess?: (result: unknown) => void;
     onError?: (message: string) => void;
 }
 
-export function useUpdate<TPayload extends Record<string, any> | FormData = Record<string, any>>(
+export function useUpdate<TPayload extends Record<string, unknown> | FormData = Record<string, unknown>>(
     baseUrl: string,
     options: UseUpdateOptions = {}
 ) {
@@ -13,7 +13,9 @@ export function useUpdate<TPayload extends Record<string, any> | FormData = Reco
     const [error, setError] = useState<string | null>(null);
 
     const optionsRef = useRef(options);
-    optionsRef.current = options;
+    useEffect(() => {
+        optionsRef.current = options;
+    }, [options]);
 
     const update = useCallback(async (id: string | number, payload: TPayload) => {
         if (loading) return null;
@@ -39,8 +41,8 @@ export function useUpdate<TPayload extends Record<string, any> | FormData = Reco
             optionsRef.current.onSuccess?.(result);
             return result;
 
-        } catch (err: any) {
-            const message = err.message || "서버 내부 오류가 발생했습니다.";
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "서버 내부 오류가 발생했습니다.";
             setError(message);
             optionsRef.current.onError?.(message);
             return null;

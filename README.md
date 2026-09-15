@@ -38,9 +38,9 @@
 ```
 /app
   /(public)          # 고객용 페이지 (예약/결제, 예약 조회, 안내)
-  /admin             # 관리자 페이지 (Supabase Auth 세션 필요, middleware.ts에서 보호)
+  /admin             # 관리자 페이지 (Supabase Auth 세션 필요, proxy.ts에서 보호)
   /api               # Route Handlers
-    /admin           # 관리자 전용 API (예약/객실/요금/대시보드)
+    /admin           # 관리자 전용 API (예약/객실/요금/대시보드, proxy.ts에서 보호)
     /reservations    # 고객 예약(홀드/취소/조회) API
     /payments        # PG 웹훅
     /cron            # 배치용 엔드포인트
@@ -75,7 +75,11 @@ npm install
 
 ### 2. 환경변수
 
-프로젝트 루트에 `.env`를 만들고 아래 값을 채웁니다.
+`.env.example`을 `.env`로 복사한 뒤 아래 값을 채웁니다. `.env`는 `.gitignore`에 포함되어 있으므로 실수로 커밋되지 않지만, 그렇더라도 **비밀번호·API 시크릿 등은 `.env` 파일 안에 주석으로도 남기지 마세요** — 필요한 메모는 별도 노트/비밀번호 관리자에 보관하고, `.env`에는 `KEY=value` 형태의 환경변수만 두는 것을 원칙으로 합니다.
+
+```bash
+cp .env.example .env
+```
 
 | 변수 | 용도 |
 |---|---|
@@ -111,7 +115,7 @@ npm install
 npm run dev
 ```
 
-`/admin`은 `middleware.ts`가 Supabase Auth 세션을 확인하며, 세션이 없으면 `/login`으로 리다이렉트됩니다.
+`/admin` 및 `/api/admin`은 `proxy.ts`가 Supabase Auth 세션을 확인하며, 세션이 없으면 페이지는 `/login`으로 리다이렉트, API는 401을 반환합니다.
 
 ---
 

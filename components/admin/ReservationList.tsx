@@ -9,7 +9,6 @@ import { useSearchParams } from "next/navigation";
 import Loading from "@/components/ui/Loading";
 import Pagination from "@/components/ui/Pagination";
 import Toast from "@/components/ui/Toast";
-import { usePagination } from "@/hooks/usePagination";
 import type { ReservationStatus } from "@/lib/reservations/types";
 
 interface AdminReservationRow {
@@ -38,6 +37,7 @@ interface FilterState {
 }
 
 const ITEMS_PER_PAGE = 20;
+const KEYWORD_DEBOUNCE_MS = 350;
 
 const DEFAULT_FILTERS: FilterState = {
     status: "ALL",
@@ -73,13 +73,20 @@ const formatCreatedAt = (value: string) => {
 
 // 상태를 만지지 않는 순수 조회 함수. 이펙트 안에서는 이 함수를 그대로 호출하지 않고
 // .then/.catch 콜백 안에서만 setState를 호출해야 "이펙트 내 동기 setState" 린트를 피할 수 있다.
-async function loadReservationRows(filters: FilterState): Promise<AdminReservationRow[]> {
+async function loadReservationRows(
+    filters: FilterState,
+    keyword: string,
+    page: number
+): Promise<{ reservations: AdminReservationRow[]; total: number }> {
     const params = new URLSearchParams();
     if (filters.status !== "ALL") params.set("status", filters.status);
     if (filters.date_from) params.set("date_from", filters.date_from);
     if (filters.date_to) params.set("date_to", filters.date_to);
     if (filters.created_from) params.set("created_from", filters.created_from);
     if (filters.created_to) params.set("created_to", filters.created_to);
+    if (keyword) params.set("keyword", keyword);
+    params.set("page", String(page));
+    params.set("page_size", String(ITEMS_PER_PAGE));
 
     const response = await fetch(`/api/admin/reservations?${params.toString()}`);
     const result = await response.json();
@@ -88,7 +95,7 @@ async function loadReservationRows(filters: FilterState): Promise<AdminReservati
         throw new Error(result.message || "예약 목록을 불러오지 못했습니다.");
     }
 
-    return result.reservations ?? [];
+    return { reservations: result.reservations ?? [], total: result.total ?? 0 };
 }
 
 export default function ReservationList() {
@@ -108,8 +115,16 @@ export default function ReservationList() {
     }, []);
 
     const [filters, setFilters] = useState<FilterState>(initialFilters);
-    const [keyword, setKeyword] = useState("");
+    // appliedFilters: 마지막으로 "조회"를 누른(또는 초기화한) 시점의 필터. 페이지 이동/키워드 검색은
+    // 폼에서 아직 편집 중인 filters가 아니라 이 값을 기준으로 재조회해야 화면과 쿼리가 어긋나지 않는다.
+    const [appliedFilters, setAppliedFilters] = useState<FilterState>(initialFilters);
+    const [keywordInput, setKeywordInput] = useState("");
+    const [activeKeyword, setActiveKeyword] = useState("");
+    // Pagination 컴포넌트는 현재 페이지를 내부 state로 들고 있어 부모에서 강제로 되돌릴 수 없다.
+    // 필터/키워드가 바뀌어 1페이지로 리셋될 때 이 key를 바꿔 Pagination을 통째로 리마운트시킨다.
+    const [paginationResetKey, setPaginationResetKey] = useState(0);
     const [rows, setRows] = useState<AdminReservationRow[]>([]);
+    const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [vaild, setVaild] = useState<string | null>(null);
@@ -119,16 +134,19 @@ export default function ReservationList() {
     const [cancelReasonInput, setCancelReasonInput] = useState("");
     const [cancelReasonError, setCancelReasonError] = useState<string | null>(null);
 
-    // 재조회(필터 제출/초기화)에서 쓰는 버전 - 이펙트 밖의 이벤트 핸들러이므로 자유롭게 setState할 수 있다.
-    const fetchReservations = useCallback(async (target: FilterState) => {
+    // 재조회(필터 제출/초기화/페이지 이동/키워드 검색)에서 쓰는 버전 - 이펙트 밖의 이벤트 핸들러나
+    // 디바운스 타이머 콜백에서 호출되므로 자유롭게 setState할 수 있다.
+    const fetchReservations = useCallback(async (target: FilterState, kw: string, targetPage: number) => {
         setLoading(true);
         try {
-            const reservations = await loadReservationRows(target);
+            const { reservations, total: totalCount } = await loadReservationRows(target, kw, targetPage);
             setError(null);
             setRows(reservations);
+            setTotal(totalCount);
         } catch (err) {
             setError(err instanceof Error ? err.message : "예약 목록을 불러오지 못했습니다.");
             setRows([]);
+            setTotal(0);
         } finally {
             setLoading(false);
         }
@@ -137,14 +155,16 @@ export default function ReservationList() {
     // 최초 마운트 조회는 setState를 .then/.catch/.finally 콜백 안에서만 호출해
     // "이펙트 내 동기 setState" 린트(react-hooks/set-state-in-effect)를 피한다.
     useEffect(() => {
-        loadReservationRows(initialFilters)
-            .then((reservations) => {
+        loadReservationRows(initialFilters, "", 1)
+            .then(({ reservations, total: totalCount }) => {
                 setError(null);
                 setRows(reservations);
+                setTotal(totalCount);
             })
             .catch((err) => {
                 setError(err instanceof Error ? err.message : "예약 목록을 불러오지 못했습니다.");
                 setRows([]);
+                setTotal(0);
             })
             .finally(() => setLoading(false));
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -153,27 +173,43 @@ export default function ReservationList() {
     const onSubmitFilters = useCallback(
         (e: React.FormEvent<HTMLFormElement>) => {
             e.preventDefault();
-            fetchReservations(filters);
+            setAppliedFilters(filters);
+            setPaginationResetKey((k) => k + 1);
+            fetchReservations(filters, activeKeyword, 1);
         },
-        [filters, fetchReservations]
+        [filters, activeKeyword, fetchReservations]
     );
 
     const onResetFilters = useCallback(() => {
         setFilters(DEFAULT_FILTERS);
-        setKeyword("");
-        fetchReservations(DEFAULT_FILTERS);
+        setAppliedFilters(DEFAULT_FILTERS);
+        setKeywordInput("");
+        setActiveKeyword("");
+        setPaginationResetKey((k) => k + 1);
+        fetchReservations(DEFAULT_FILTERS, "", 1);
     }, [fetchReservations]);
 
-    // 서버 조회 결과(상태/기간) 안에서 예약자명·전화번호·예약번호로 한 번 더 좁혀본다.
-    const filteredRows = useMemo(() => {
-        const trimmed = keyword.trim();
-        if (!trimmed) return rows;
-        return rows.filter(
-            (r) => r.guest_name.includes(trimmed) || r.guest_phone.includes(trimmed) || r.id.startsWith(trimmed)
-        );
-    }, [rows, keyword]);
+    // 예약자명/전화번호 검색을 타이핑마다 서버에 쏘지 않도록 debounce 후 재조회한다.
+    // (예약번호 부분검색은 uuid 컬럼이라 서버 ilike로 옮길 수 없어 이번에 제외했다.)
+    useEffect(() => {
+        const trimmed = keywordInput.trim();
+        if (trimmed === activeKeyword) return;
 
-    const { currentItems, totalCount, onPageChange } = usePagination(filteredRows, ITEMS_PER_PAGE);
+        const timer = setTimeout(() => {
+            setActiveKeyword(trimmed);
+            setPaginationResetKey((k) => k + 1);
+            fetchReservations(appliedFilters, trimmed, 1);
+        }, KEYWORD_DEBOUNCE_MS);
+
+        return () => clearTimeout(timer);
+    }, [keywordInput, activeKeyword, appliedFilters, fetchReservations]);
+
+    const onPageChange = useCallback(
+        (nextPage: number) => {
+            fetchReservations(appliedFilters, activeKeyword, nextPage);
+        },
+        [appliedFilters, activeKeyword, fetchReservations]
+    );
 
     const openCancelModal = useCallback((id: string) => {
         setCancelModalId(id);
@@ -308,9 +344,9 @@ export default function ReservationList() {
                     <input
                         type="text"
                         id="keyword"
-                        value={keyword}
-                        onChange={(e) => setKeyword(e.target.value)}
-                        placeholder="조회된 목록 내에서 검색"
+                        value={keywordInput}
+                        onChange={(e) => setKeywordInput(e.target.value)}
+                        placeholder="이름 또는 전화번호로 검색"
                         className="form-input"
                     />
                 </div>
@@ -328,7 +364,7 @@ export default function ReservationList() {
                 <Loading contents="예약 목록을 불러오는 중입니다..." />
             ) : error ? (
                 <p className="card p-6 text-sm text-center text-muted">{error}</p>
-            ) : filteredRows.length === 0 ? (
+            ) : rows.length === 0 ? (
                 <p className="card p-6 text-sm text-center text-muted">조건에 맞는 예약이 없습니다.</p>
             ) : (
                 <>
@@ -348,7 +384,7 @@ export default function ReservationList() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {currentItems.map((r) => (
+                                {rows.map((r) => (
                                     <tr key={r.id}>
                                         <td className="text-muted">{r.id.slice(0, 8)}</td>
                                         <td>
@@ -416,7 +452,12 @@ export default function ReservationList() {
                         </table>
                     </div>
 
-                    <Pagination totalCount={totalCount} itemsPerPage={ITEMS_PER_PAGE} onPageChange={onPageChange} />
+                    <Pagination
+                        key={paginationResetKey}
+                        totalCount={total}
+                        itemsPerPage={ITEMS_PER_PAGE}
+                        onPageChange={onPageChange}
+                    />
                 </>
             )}
 
