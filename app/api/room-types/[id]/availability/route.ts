@@ -41,20 +41,44 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         );
     }
 
-    // FR-4 AC2: 예약 신청 전에 환불 규정을 미리 안내하기 위해 함께 내려준다 (days_before 내림차순).
-    const { data: refundPolicies } = await supabaseAdmin
-        .from("refund_policies")
-        .select("days_before, refund_percent")
-        .eq("property_id", roomType.property_id)
-        .order("days_before", { ascending: false });
+    const monthStart = new Date(Date.UTC(year, month - 1, 1));
+    const monthEndExclusive = new Date(Date.UTC(year, month, 1)); // 다음달 1일
 
-    // FR-9 AC2: 점검(blocked_from~blocked_until) 중인 유닛은 그 기간만 재고에서 제외해야 하므로,
-    // 전체 개수(count)가 아니라 유닛별 점검 구간을 받아와 날짜별로 직접 계산한다.
-    const { data: typeRooms } = await supabaseAdmin
-        .from("rooms")
-        .select("id, blocked_from, blocked_until")
-        .eq("room_type_id", id)
-        .eq("is_active", true);
+    // 아래 4개 쿼리는 roomType 조회 결과(id, property_id)에만 의존할 뿐 서로 의존하지 않으므로
+    // 순차 await 대신 Promise.all로 동시에 날린다. BookingCalendar가 월 이동마다 호출하는
+    // 핫패스라 지연을 줄이는 효과가 크다.
+    const [
+        { data: refundPolicies },
+        { data: typeRooms },
+        { data: rules },
+        { data: reservations },
+    ] = await Promise.all([
+        // FR-4 AC2: 예약 신청 전에 환불 규정을 미리 안내하기 위해 함께 내려준다 (days_before 내림차순).
+        supabaseAdmin
+            .from("refund_policies")
+            .select("days_before, refund_percent")
+            .eq("property_id", roomType.property_id)
+            .order("days_before", { ascending: false }),
+        // FR-9 AC2: 점검(blocked_from~blocked_until) 중인 유닛은 그 기간만 재고에서 제외해야 하므로,
+        // 전체 개수(count)가 아니라 유닛별 점검 구간을 받아와 날짜별로 직접 계산한다.
+        supabaseAdmin
+            .from("rooms")
+            .select("id, blocked_from, blocked_until")
+            .eq("room_type_id", id)
+            .eq("is_active", true),
+        supabaseAdmin
+            .from("price_rules")
+            .select("start_date, end_date, days_of_week, price, priority")
+            .eq("room_type_id", id),
+        // 이 달과 겹치는 예약만 가져와서(overlap) 날짜별 예약 수를 직접 센다.
+        supabaseAdmin
+            .from("reservations")
+            .select("check_in, check_out")
+            .eq("room_type_id", id)
+            .in("status", ["HOLD", "CONFIRMED"])
+            .lt("check_in", toISODate(monthEndExclusive))
+            .gt("check_out", toISODate(monthStart)),
+    ]);
 
     function activeRoomCount(iso: string): number {
         return (typeRooms ?? []).filter((room) => {
@@ -64,24 +88,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }).length;
     }
 
-    const { data: rules } = await supabaseAdmin
-        .from("price_rules")
-        .select("start_date, end_date, days_of_week, price, priority")
-        .eq("room_type_id", id);
-
     const priceRules = (rules ?? []) as PriceRule[];
-
-    const monthStart = new Date(Date.UTC(year, month - 1, 1));
-    const monthEndExclusive = new Date(Date.UTC(year, month, 1)); // 다음달 1일
-
-    // 이 달과 겹치는 예약만 가져와서(overlap) 날짜별 예약 수를 직접 센다.
-    const { data: reservations } = await supabaseAdmin
-        .from("reservations")
-        .select("check_in, check_out")
-        .eq("room_type_id", id)
-        .in("status", ["HOLD", "CONFIRMED"])
-        .lt("check_in", toISODate(monthEndExclusive))
-        .gt("check_out", toISODate(monthStart));
 
     const days = [];
     const cursor = new Date(monthStart);

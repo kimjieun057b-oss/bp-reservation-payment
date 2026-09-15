@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface UseDeleteOptions {
     onSuccess?: () => void;
@@ -7,7 +7,7 @@ interface UseDeleteOptions {
 
 interface RemoveOptions {
     queryParams?: Record<string, string>;
-    body?: Record<string, any>;
+    body?: Record<string, unknown>;
 }
 
 export function useDelete(baseUrl: string, options: UseDeleteOptions = {}) {
@@ -15,7 +15,9 @@ export function useDelete(baseUrl: string, options: UseDeleteOptions = {}) {
     const [error, setError] = useState<string | null>(null);
 
     const optionsRef = useRef(options);
-    optionsRef.current = options;
+    useEffect(() => {
+        optionsRef.current = options;
+    }, [options]);
 
     const remove = useCallback(async (id: string | number, removeOptions?: RemoveOptions) => {
         if (loading) return false;
@@ -46,8 +48,8 @@ export function useDelete(baseUrl: string, options: UseDeleteOptions = {}) {
             optionsRef.current.onSuccess?.();
             return true;
 
-        } catch (err: any) {
-            const message = err.message || "서버 내부 오류가 발생했습니다.";
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "서버 내부 오류가 발생했습니다.";
             setError(message);
             optionsRef.current.onError?.(message);
             return false;
