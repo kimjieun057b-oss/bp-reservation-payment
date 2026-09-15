@@ -2,6 +2,7 @@
 // rooms/page.tsx(객실안내)와 reserve/page.tsx(실시간예약 1단계)가 linkBase만 다르게 재사용한다.
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { formatWon } from "@/lib/formatCurrency";
 
 export interface RoomTypeListProps {
     linkBase: string; // 예: "/rooms" 또는 "/reserve" -> 카드 클릭 시 `${linkBase}/${roomTypeId}`로 이동
@@ -35,7 +36,7 @@ export default async function RoomTypeList({ linkBase }: RoomTypeListProps) {
                                 기준 {roomType.capacity_standard}인 · 최대 {roomType.capacity_max}인
                             </span>
                             <span className="text-primary font-bold">
-                                {roomType.base_price.toLocaleString()}원~
+                                {formatWon(roomType.base_price)}~
                             </span>
                         </div>
                     </Link>

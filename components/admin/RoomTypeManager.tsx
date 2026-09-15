@@ -10,6 +10,7 @@ import { useUpdate } from "@/hooks/useUpdate";
 import { useDelete } from "@/hooks/useDelete";
 import RoomList from "@/components/admin/RoomList";
 import PriceRuleList from "@/components/admin/PriceRuleList";
+import { formatWon } from "@/lib/formatCurrency";
 
 interface RoomType {
     id: string;
@@ -190,8 +191,8 @@ export default function RoomTypeManager() {
                                 >
                                     <td className="font-medium text-title">{rt.name}</td>
                                     <td>{rt.capacity_standard}인 / {rt.capacity_max}인</td>
-                                    <td>{rt.base_price.toLocaleString()}원</td>
-                                    <td>{rt.extra_person_fee.toLocaleString()}원</td>
+                                    <td>{formatWon(rt.base_price)}</td>
+                                    <td>{formatWon(rt.extra_person_fee)}</td>
                                     <td>
                                         {rt.room_count === 0 ? (
                                             <span className="badge badge-danger">객실없음</span>

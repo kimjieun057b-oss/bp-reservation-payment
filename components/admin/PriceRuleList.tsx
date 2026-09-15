@@ -7,6 +7,7 @@ import { useFetch } from "@/hooks/useFetch";
 import { useCreate } from "@/hooks/useCreate";
 import { useUpdate } from "@/hooks/useUpdate";
 import { useDelete } from "@/hooks/useDelete";
+import { formatWon } from "@/lib/formatCurrency";
 
 interface PriceRule {
     id: string;
@@ -191,7 +192,7 @@ export default function PriceRuleList({ roomTypeId }: PriceRuleListProps) {
                             <div className="min-w-0">
                                 <p className="font-medium text-title">{rule.name}</p>
                                 <p className="text-xs text-muted mt-0.5">
-                                    {describeRule(rule)} · {rule.price.toLocaleString()}원 · 우선순위 {rule.priority}
+                                    {describeRule(rule)} · {formatWon(rule.price)} · 우선순위 {rule.priority}
                                 </p>
                             </div>
                             <div className="flex gap-1.5">

@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Loading from "@/components/ui/Loading";
+import { formatWon } from "@/lib/formatCurrency";
 
 interface TrendPoint {
     month: string;
@@ -29,8 +30,6 @@ interface DashboardSummaryData {
     today: PeriodCount;
     thisWeek: PeriodCount;
 }
-
-const won = (n: number) => `${n.toLocaleString()}원`;
 
 const currentMonthValue = () => {
     const now = new Date();
@@ -140,15 +139,15 @@ export default function DashboardSummary() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="card p-6">
                             <p className="text-sm text-muted mb-2">매출</p>
-                            <p className="text-2xl font-bold text-title">{won(data.revenue)}</p>
+                            <p className="text-2xl font-bold text-title">{formatWon(data.revenue)}</p>
                         </div>
                         <div className="card p-6">
                             <p className="text-sm text-muted mb-2">환불액</p>
-                            <p className="text-2xl font-bold text-red-600">{won(data.refund)}</p>
+                            <p className="text-2xl font-bold text-red-600">{formatWon(data.refund)}</p>
                         </div>
                         <div className="card p-6">
                             <p className="text-sm text-muted mb-2">순매출</p>
-                            <p className="text-2xl font-bold text-title">{won(data.net)}</p>
+                            <p className="text-2xl font-bold text-title">{formatWon(data.net)}</p>
                         </div>
                     </div>
 
@@ -161,12 +160,12 @@ export default function DashboardSummary() {
                                         <div
                                             className="w-1/2 max-w-6 rounded-t bg-primary"
                                             style={{ height: `${(t.revenue / maxTrendValue) * 100}%` }}
-                                            title={`매출 ${won(t.revenue)}`}
+                                            title={`매출 ${formatWon(t.revenue)}`}
                                         />
                                         <div
                                             className="w-1/2 max-w-6 rounded-t bg-red-300"
                                             style={{ height: `${(t.refund / maxTrendValue) * 100}%` }}
-                                            title={`환불 ${won(t.refund)}`}
+                                            title={`환불 ${formatWon(t.refund)}`}
                                         />
                                     </div>
                                     <p className="text-xs text-muted">{monthLabel(t.month)}</p>

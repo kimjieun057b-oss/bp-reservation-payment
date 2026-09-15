@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { formatWon } from "@/lib/formatCurrency";
 
 export interface RoomTypeDetailProps {
     roomTypeId: string;
@@ -61,7 +62,7 @@ export default async function RoomTypeDetail({ roomTypeId }: RoomTypeDetailProps
                 </div>
                 <div>
                     <p className="text-muted mb-1">평일 요금</p>
-                    <p className="text-title font-medium">{roomType.base_price.toLocaleString()}원~</p>
+                    <p className="text-title font-medium">{formatWon(roomType.base_price)}~</p>
                 </div>
                 {property && (
                     <>
