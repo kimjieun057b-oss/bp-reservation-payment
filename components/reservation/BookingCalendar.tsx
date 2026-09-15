@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { enumerateNights, toISODate } from "@/lib/reservations/pricing";
 import type { RefundPolicyTier } from "@/lib/reservations/refund";
 import Toast from "@/components/ui/Toast";
+import { formatWon } from "@/lib/formatCurrency";
 
 export interface BookingCalendarProps {
     roomTypeId?: string;
@@ -442,7 +443,7 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                                     >
                                         <span className="text-sm text-title">{rt.name}</span>
                                         <span className="text-sm text-primary font-bold">
-                                            {rt.base_price.toLocaleString()}원~
+                                            {formatWon(rt.base_price)}~
                                         </span>
                                     </button>
                                 ))}
@@ -514,7 +515,7 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
 
                     <div className="flex justify-between items-baseline mb-5">
                         <span className="text-sm text-white/60">합계</span>
-                        <span className="text-xl font-bold text-primary">{totalPrice.toLocaleString()}원</span>
+                        <span className="text-xl font-bold text-primary">{formatWon(totalPrice)}</span>
                     </div>
 
                     <button
@@ -536,18 +537,18 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                         </div>
                         <div className="flex justify-between">
                             <span>평일</span>
-                            <span>{roomType.base_price.toLocaleString()}원</span>
+                            <span>{formatWon(roomType.base_price)}</span>
                         </div>
                         {weekendSample && (
                             <div className="flex justify-between">
                                 <span>주말</span>
-                                <span>{weekendSample.price.toLocaleString()}원</span>
+                                <span>{formatWon(weekendSample.price)}</span>
                             </div>
                         )}
                         {peakSample && (
                             <div className="flex justify-between">
                                 <span>성수기</span>
-                                <span>{peakSample.price.toLocaleString()}원</span>
+                                <span>{formatWon(peakSample.price)}</span>
                             </div>
                         )}
                     </div>

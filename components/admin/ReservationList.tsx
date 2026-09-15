@@ -9,7 +9,9 @@ import { useSearchParams } from "next/navigation";
 import Loading from "@/components/ui/Loading";
 import Pagination from "@/components/ui/Pagination";
 import Toast from "@/components/ui/Toast";
+import { formatDateOnly, formatLocalDate } from "@/lib/formatDate";
 import type { ReservationStatus } from "@/lib/reservations/types";
+import { formatWon } from "@/lib/formatCurrency";
 
 interface AdminReservationRow {
     id: string;
@@ -59,16 +61,6 @@ const STATUS_BADGE: Record<ReservationStatus, string> = {
     CONFIRMED: "badge-success",
     CANCELLED: "badge-muted",
     EXPIRED: "badge-danger",
-};
-
-const formatDate = (value: string) => value.slice(0, 10).replaceAll("-", ".");
-
-// created_at은 시간이 포함된 timestamptz라 문자열을 그대로 자르면(formatDate) UTC 기준 날짜가 나와
-// 로컬 자정 근처에서 하루가 어긋날 수 있다. Date 객체의 로컬 getter로 변환해 날짜만 뽑는다.
-const formatCreatedAt = (value: string) => {
-    const date = new Date(value);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())}`;
 };
 
 // 상태를 만지지 않는 순수 조회 함수. 이펙트 안에서는 이 함수를 그대로 호출하지 않고
@@ -253,7 +245,7 @@ export default function ReservationList() {
             setCancelReasonInput("");
             setVaild(
                 result.refundAmount > 0
-                    ? `취소 처리되었습니다. ${result.refundAmount.toLocaleString()}원이 환불됩니다.`
+                    ? `취소 처리되었습니다. ${formatWon(result.refundAmount)}이 환불됩니다.`
                     : "취소 처리되었습니다. 환불 규정상 환불 금액은 없습니다."
             );
         } catch (err) {
@@ -396,21 +388,21 @@ export default function ReservationList() {
                                             {r.rooms?.name ? ` (${r.rooms.name})` : ""}
                                         </td>
                                         <td className="whitespace-nowrap">
-                                            {formatDate(r.check_in)} ~ {formatDate(r.check_out)}
+                                            {formatDateOnly(r.check_in)} ~ {formatDateOnly(r.check_out)}
                                         </td>
                                         <td>{r.guest_count}명</td>
                                         <td className="font-medium text-title">
                                             {r.status === "CANCELLED" ? (
                                                 <>
                                                     <p className="text-xs text-muted line-through">
-                                                        {r.total_price.toLocaleString()}원
+                                                        {formatWon(r.total_price)}
                                                     </p>
                                                     <p className="whitespace-nowrap">
-                                                        환불 {(r.refund_amount ?? 0).toLocaleString()}원
+                                                        환불 {formatWon(r.refund_amount)}
                                                     </p>
                                                 </>
                                             ) : (
-                                                `${r.total_price.toLocaleString()}원`
+                                                formatWon(r.total_price)
                                             )}
                                         </td>
                                         <td>
@@ -445,7 +437,7 @@ export default function ReservationList() {
                                                 </button>
                                             )}
                                         </td>
-                                        <td className="text-muted whitespace-nowrap">{formatCreatedAt(r.created_at)}</td>
+                                        <td className="text-muted whitespace-nowrap">{formatLocalDate(r.created_at)}</td>
                                     </tr>
                                 ))}
                             </tbody>

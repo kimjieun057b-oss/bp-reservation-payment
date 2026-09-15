@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Toast from "@/components/ui/Toast";
+import { formatWon } from "@/lib/formatCurrency";
 
 export interface CheckoutPanelProps {
     reservationId: string;
@@ -206,7 +207,7 @@ export default function CheckoutPanel({ reservationId }: CheckoutPanelProps) {
                         <div className="flex justify-between items-baseline mb-5">
                             <span className="text-sm text-white/60">결제 금액</span>
                             <span className="text-xl font-bold text-primary">
-                                {reservation.total_price.toLocaleString()}원
+                                {formatWon(reservation.total_price)}
                             </span>
                         </div>
 

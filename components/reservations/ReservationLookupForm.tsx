@@ -2,6 +2,8 @@
 import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import Toast from "@/components/ui/Toast";
+import { formatWon } from "@/lib/formatCurrency";
+import { formatDateOnly } from "@/lib/formatDate";
 
 type ReservationStatus = "HOLD" | "CONFIRMED" | "CANCELLED" | "EXPIRED";
 
@@ -37,8 +39,6 @@ const STATUS_BADGE: Record<ReservationStatus, string> = {
     CANCELLED: "badge-muted",
     EXPIRED: "badge-danger",
 };
-
-const formatDate = (value: string) => value.replaceAll("-", ".");
 
 export default function ReservationLookupForm() {
     const [form, setForm] = useState<LookupFormState>({ guest_name: "", guest_phone: "" });
@@ -115,7 +115,7 @@ export default function ReservationLookupForm() {
             setPendingCancelId(reservationId);
             setVaild(
                 refundAmount > 0
-                    ? `환불 규정에 따라 결제 금액 ${totalPrice.toLocaleString()}원의 ${refundPercent}%인 ${refundAmount.toLocaleString()}원이 환불됩니다. 예약을 취소하시겠습니까?`
+                    ? `환불 규정에 따라 결제 금액 ${formatWon(totalPrice)}의 ${refundPercent}%인 ${formatWon(refundAmount)}이 환불됩니다. 예약을 취소하시겠습니까?`
                     : "환불 규정에 따라 환불 금액이 없습니다(0원). 그래도 예약을 취소하시겠습니까?"
             );
         } catch (err) {
@@ -154,7 +154,7 @@ export default function ReservationLookupForm() {
 
             setVaild(
                 result.refundAmount > 0
-                    ? `예약이 취소되었습니다. ${result.refundAmount.toLocaleString()}원이 환불됩니다.`
+                    ? `예약이 취소되었습니다. ${formatWon(result.refundAmount)}이 환불됩니다.`
                     : "예약이 취소되었습니다. 환불 규정상 환불 금액은 없습니다."
             );
         } catch (err) {
@@ -253,17 +253,17 @@ export default function ReservationLookupForm() {
                                     {r.rooms?.name ? ` (${r.rooms.name})` : ""}
                                 </p>
                                 <p className="text-sm text-body mt-1">
-                                    {formatDate(r.check_in)} ~ {formatDate(r.check_out)} · 인원 {r.guest_count}명
+                                    {formatDateOnly(r.check_in)} ~ {formatDateOnly(r.check_out)} · 인원 {r.guest_count}명
                                 </p>
                             </div>
                             <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                                 <span className="text-sm text-body">결제 금액</span>
-                                <span className="font-bold text-title">{r.total_price.toLocaleString()}원</span>
+                                <span className="font-bold text-title">{formatWon(r.total_price)}</span>
                             </div>
                             {r.status === "CANCELLED" && r.refund_amount != null && (
                                 <div className="flex items-center justify-between">
                                     <span className="text-sm text-body">환불 금액</span>
-                                    <span className="font-bold text-title">{r.refund_amount.toLocaleString()}원</span>
+                                    <span className="font-bold text-title">{formatWon(r.refund_amount)}</span>
                                 </div>
                             )}
                             {r.status === "HOLD" && (

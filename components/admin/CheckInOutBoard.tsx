@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Loading from "@/components/ui/Loading";
 import Toast from "@/components/ui/Toast";
+import { formatDateOnly, formatLocalTime } from "@/lib/formatDate";
 
 interface BoardRow {
     id: string;
@@ -28,14 +29,6 @@ const todayValue = () => {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-};
-
-const formatDate = (value: string) => value.slice(0, 10).replaceAll("-", ".");
-
-const formatTime = (value: string) => {
-    const date = new Date(value);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
 async function loadBoard(date: string): Promise<BoardData> {
@@ -156,21 +149,21 @@ export default function CheckInOutBoard() {
                                         {r.rooms?.name ? ` (${r.rooms.name})` : ""}
                                     </td>
                                     <td className="whitespace-nowrap">
-                                        {formatDate(r.check_in)} ~ {formatDate(r.check_out)}
+                                        {formatDateOnly(r.check_in)} ~ {formatDateOnly(r.check_out)}
                                     </td>
                                     <td>{r.guest_count}명</td>
                                     <td>
                                         {kind === "arrival" ? (
                                             r.checked_in_at ? (
                                                 <span className="badge badge-success">
-                                                    체크인 완료 ({formatTime(r.checked_in_at)})
+                                                    체크인 완료 ({formatLocalTime(r.checked_in_at)})
                                                 </span>
                                             ) : (
                                                 <span className="badge badge-warning">체크인 전</span>
                                             )
                                         ) : r.checked_out_at ? (
                                             <span className="badge badge-success">
-                                                체크아웃 완료 ({formatTime(r.checked_out_at)})
+                                                체크아웃 완료 ({formatLocalTime(r.checked_out_at)})
                                             </span>
                                         ) : r.checked_in_at ? (
                                             <span className="badge badge-warning">체크아웃 전</span>
