@@ -13,6 +13,12 @@ export interface CheckoutPanelProps {
     reservationId: string;
 }
 
+interface ReservationAddonItem {
+    quantity: number;
+    price: number;
+    addons: { name: string } | null;
+}
+
 interface ReservationDetail {
     id: string;
     status: "HOLD" | "CONFIRMED" | "CANCELLED" | "EXPIRED";
@@ -26,6 +32,7 @@ interface ReservationDetail {
     room_type_id: string;
     room_types: { name: string } | null;
     rooms: { name: string } | null;
+    reservation_addons: ReservationAddonItem[];
 }
 
 const STATUS_LABEL: Record<ReservationDetail["status"], string> = {
@@ -203,6 +210,19 @@ export default function CheckoutPanel({ reservationId }: CheckoutPanelProps) {
                                 </span>
                             </div>
                         </div>
+
+                        {reservation.reservation_addons.length > 0 && (
+                            <div className="space-y-2 text-sm border-b border-white/10 pb-4 mb-4">
+                                {reservation.reservation_addons.map((item, index) => (
+                                    <div key={index} className="flex justify-between">
+                                        <span className="text-white/60">
+                                            {item.addons?.name ?? "옵션"} × {item.quantity}
+                                        </span>
+                                        <span className="text-white">{formatWon(item.price * item.quantity)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
 
                         <div className="flex justify-between items-baseline mb-5">
                             <span className="text-sm text-white/60">결제 금액</span>
