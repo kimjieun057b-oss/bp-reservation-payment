@@ -39,6 +39,13 @@ interface AvailabilityResponse {
     refund_policies: RefundPolicyTier[];
 }
 
+interface AddonInfo {
+    id: string;
+    name: string;
+    description: string | null;
+    price: number;
+}
+
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
 function monthKeyOf(year: number, month: number): string {
@@ -85,6 +92,9 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
     const [guestPhone, setGuestPhone] = useState("");
     const [guestEmail, setGuestEmail] = useState("");
     const [guestCount, setGuestCount] = useState(1);
+
+    const [addons, setAddons] = useState<AddonInfo[] | null>(null);
+    const [addonQuantities, setAddonQuantities] = useState<Record<string, number>>({});
 
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
@@ -139,6 +149,35 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [roomTypeId, selectedRoomTypeId]);
+
+    // 옵션 상품은 객실과 무관하게 공통이므로 최초 1회만 불러온다.
+    useEffect(() => {
+        let cancelled = false;
+
+        fetch("/api/addons")
+            .then(async (res) => {
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.message ?? "옵션 목록을 불러오지 못했습니다.");
+                return result.addons as AddonInfo[];
+            })
+            .then((list) => {
+                if (!cancelled) setAddons(list);
+            })
+            .catch(() => {
+                if (!cancelled) setAddons([]);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const changeAddonQuantity = useCallback((addonId: string, delta: number) => {
+        setAddonQuantities((prev) => {
+            const next = Math.max(0, (prev[addonId] ?? 0) + delta);
+            return { ...prev, [addonId]: next };
+        });
+    }, []);
 
     const currentKey = selectedRoomTypeId ? monthCacheKey(selectedRoomTypeId, viewYear, viewMonth) : null;
     const currentDays = currentKey ? monthsCache[currentKey] : undefined;
@@ -231,6 +270,12 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
         return sum + (info?.price ?? 0);
     }, 0);
 
+    const addonsTotal = (addons ?? []).reduce(
+        (sum, addon) => sum + addon.price * (addonQuantities[addon.id] ?? 0),
+        0
+    );
+    const grandTotal = totalPrice + addonsTotal;
+
     async function handleSubmit() {
         setSubmitError(null);
 
@@ -247,6 +292,10 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
 
         setSubmitting(true);
         try {
+            const selectedAddons = Object.entries(addonQuantities)
+                .filter(([, quantity]) => quantity > 0)
+                .map(([addon_id, quantity]) => ({ addon_id, quantity }));
+
             const res = await fetch("/api/reservations/hold", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -258,6 +307,7 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                     guest_phone: guestPhone,
                     guest_email: guestEmail || undefined,
                     guest_count: guestCount,
+                    addons: selectedAddons,
                 }),
             });
             const result = await res.json();
@@ -497,6 +547,43 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                     </div>
                 </div>
 
+                {addons && addons.length > 0 && (
+                    <div className="card p-5">
+                        <p className="text-sm text-muted mb-3">옵션 상품</p>
+                        <div className="space-y-3">
+                            {addons.map((addon) => (
+                                <div key={addon.id} className="flex items-center justify-between gap-2">
+                                    <div>
+                                        <p className="text-sm text-title">{addon.name}</p>
+                                        <p className="text-xs text-muted">{formatWon(addon.price)}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => changeAddonQuantity(addon.id, -1)}
+                                            className="btn-ghost w-7 h-7 flex items-center justify-center"
+                                            aria-label={`${addon.name} 수량 감소`}
+                                        >
+                                            -
+                                        </button>
+                                        <span className="w-5 text-center text-sm">
+                                            {addonQuantities[addon.id] ?? 0}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => changeAddonQuantity(addon.id, 1)}
+                                            className="btn-ghost w-7 h-7 flex items-center justify-center"
+                                            aria-label={`${addon.name} 수량 증가`}
+                                        >
+                                            +
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <div className="bg-title rounded-lg p-5">
                     <div className="space-y-2 text-sm border-b border-white/10 pb-4 mb-4">
                         <div className="flex justify-between">
@@ -513,9 +600,22 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                         </div>
                     </div>
 
+                    <div className="space-y-1 text-sm mb-3">
+                        <div className="flex justify-between">
+                            <span className="text-white/60">객실 요금</span>
+                            <span className="text-white">{formatWon(totalPrice)}</span>
+                        </div>
+                        {addonsTotal > 0 && (
+                            <div className="flex justify-between">
+                                <span className="text-white/60">옵션 요금</span>
+                                <span className="text-white">{formatWon(addonsTotal)}</span>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="flex justify-between items-baseline mb-5">
                         <span className="text-sm text-white/60">합계</span>
-                        <span className="text-xl font-bold text-primary">{formatWon(totalPrice)}</span>
+                        <span className="text-xl font-bold text-primary">{formatWon(grandTotal)}</span>
                     </div>
 
                     <button
