@@ -25,9 +25,11 @@ properties (숙소/캠핑장)
    └─ room_types (객실타입/사이트타입)
          └─ rooms (개별 객실·사이트 유닛)
                └─ reservations (예약) ── payments (결제)
+                                     ├─ reservation_addons (예약별 옵션 선택 내역)
                                      └─ notification_logs (알림발송기록)
    └─ price_rules (요금정책 - 성수기/주말 등)
    └─ refund_policies (환불정책)
+   └─ addons (옵션 상품 - 온수풀/바베큐 등)
    └─ admin_users (운영자 계정)
 ```
 
@@ -198,6 +200,35 @@ create table refund_policies (
 -- 예: (7일전, 100%), (3일전, 50%), (0일전/당일, 0%)
 ```
 
+### 2-8-1. addons — 옵션 상품 카탈로그 (property 전체 공통)
+
+```sql
+create table addons (
+  id uuid primary key default gen_random_uuid(),
+  property_id uuid not null references properties(id) on delete cascade,
+  name text not null,                        -- "온수풀 이용권", "바베큐 세트" 등
+  description text,
+  price int not null,                        -- 단가 (예약 시 수량 곱해서 추가금액으로 합산)
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+```
+
+### 2-8-2. reservation_addons — 예약별 옵션 선택 내역
+
+```sql
+create table reservation_addons (
+  id uuid primary key default gen_random_uuid(),
+  reservation_id uuid not null references reservations(id) on delete cascade,
+  addon_id uuid not null references addons(id),
+  quantity int not null default 1,
+  price int not null,                        -- 예약 시점 단가 스냅샷 (addons.price 변경과 무관)
+  created_at timestamptz not null default now()
+);
+```
+
+> 💡 `reservations.total_price`는 객실 숙박비 + 옵션 합계를 포함한 값이다. 별도 계산 없이 기존 환불 규정(2-8)을 그대로 적용할 수 있다.
+
 ### 2-9. notification_logs — 알림 발송 기록
 
 ```sql
@@ -263,6 +294,7 @@ Base URL: `/api`
 |---|---|---|
 | GET | `/room-types?property_id=` | 객실/사이트 타입 목록 |
 | GET | `/room-types/:id` | 객실 타입 상세 (요금정책 포함) |
+| GET | `/addons` | 옵션 상품 목록 (property 전체 공통) |
 | GET | `/availability?room_type_id=&check_in=&check_out=` | 해당 기간 예약 가능 객실 수·가격 조회 |
 | POST | `/reservations/hold` | 임시 홀드 생성 (아래 상세) |
 | GET | `/reservations/:id` | 예약 상태 조회 (홀드 만료 카운트다운용 polling) |
@@ -282,10 +314,13 @@ Base URL: `/api`
   "check_out": "2026-09-22",
   "guest_name": "홍길동",
   "guest_phone": "010-1234-5678",
-  "guest_count": 2
+  "guest_count": 2,
+  "addons": [
+    { "addon_id": "uuid", "quantity": 2 }
+  ]
 }
 
-// Response 201
+// Response 201 (total_price에 옵션 금액 포함)
 {
   "reservation_id": "uuid",
   "status": "HOLD",
