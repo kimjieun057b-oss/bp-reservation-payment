@@ -99,7 +99,8 @@ export async function GET(request: Request) {
                 created_at,
                 room_types ( name ),
                 rooms ( name ),
-                properties ( name )
+                properties ( name ),
+                reservation_addons ( quantity, price, addons ( name ) )
             `, { count: "exact" })
             .order("created_at", { ascending: false });
 

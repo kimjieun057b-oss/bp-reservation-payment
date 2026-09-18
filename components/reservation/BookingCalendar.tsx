@@ -423,15 +423,15 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                 )}
 
                 <div className="flex flex-wrap gap-4 mt-6 text-xs text-muted">
-                    <span className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5">
                         <span className="inline-block w-3 h-3 rounded-full bg-primary" /> 선택
-                    </span>
-                    <span className="flex items-center gap-1.5">
+                    </div>
+                    <div className="flex items-center gap-1.5">
                         <span className="inline-block w-3 h-3 rounded-full border border-gray-300" /> 예약 가능
-                    </span>
-                    <span className="flex items-center gap-1.5">
+                    </div>
+                    <div className="flex items-center gap-1.5">
                         <span className="inline-block w-3 h-3 rounded-full bg-gray-100 border border-gray-300" /> 마감
-                    </span>
+                    </div>
                     <span>성 성수기</span>
                     <span>주 주말</span>
                 </div>

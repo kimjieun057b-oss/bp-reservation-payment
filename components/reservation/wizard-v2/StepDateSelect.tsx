@@ -65,15 +65,15 @@ export default function StepDateSelect({
                     {checkIn && checkOut && <p className="text-sm text-body">{nights}박</p>}
 
                     <div className="flex flex-wrap gap-3 pt-2 text-xs text-muted">
-                        <span className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5">
                             <span className="inline-block w-3 h-3 rounded-full bg-primary" /> 선택
-                        </span>
-                        <span className="flex items-center gap-1.5">
+                        </div>
+                        <div className="flex items-center gap-1.5">
                             <span className="inline-block w-3 h-3 rounded-full border border-gray-300" /> 가능
-                        </span>
-                        <span className="flex items-center gap-1.5">
+                        </div>
+                        <div className="flex items-center gap-1.5">
                             <span className="inline-block w-3 h-3 rounded-full bg-gray-100 border border-gray-300" /> 마감
-                        </span>
+                        </div>
                     </div>
                 </div>
 

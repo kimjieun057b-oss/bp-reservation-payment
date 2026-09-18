@@ -15,4 +15,5 @@ export const ADMIN_CATEGORY : { [key: string]: { title: string; categories?: {na
     checkinout: {title: "체크인/체크아웃"},
     reservations: {title: "예약 관리"},
     room_types: {title: "객실 관리"},
+    addons: {title: "옵션 관리"},
 }
