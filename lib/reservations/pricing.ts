@@ -93,3 +93,85 @@ export async function calculateTotalPrice(
         0
     );
 }
+
+// FR: 예약 시 옵션 상품(addons) 선택 시 추가금액 계산 (docs/superpowers/specs/2026-09-18-addon-products-design.md)
+export interface AddonSelection {
+    addon_id: string;
+    quantity: number;
+}
+
+export interface AddonRow {
+    id: string;
+    property_id: string;
+    name: string;
+    price: number;
+    is_active: boolean;
+}
+
+export interface AddonLineItem {
+    addon_id: string;
+    name: string;
+    unit_price: number;
+    quantity: number;
+    line_total: number;
+}
+
+export type ResolveAddonsError = "ADDON_NOT_FOUND";
+
+export type ResolveAddonsResult =
+    | { ok: true; total: number; items: AddonLineItem[] }
+    | { ok: false; error: ResolveAddonsError };
+
+// quantity<=0인 항목은 무시한다. 존재하지 않거나 비활성화됐거나 다른 property 소속인 addon을
+// 선택하면 전체를 실패 처리한다(부분 성공 없음). DB 조회 없이 순수 계산만 하므로 단위 테스트가 쉽다.
+export function computeAddonSelections(
+    selections: AddonSelection[],
+    addons: AddonRow[],
+    propertyId: string
+): ResolveAddonsResult {
+    const items: AddonLineItem[] = [];
+    let total = 0;
+
+    for (const selection of selections) {
+        if (selection.quantity <= 0) continue;
+
+        const addon = addons.find((a) => a.id === selection.addon_id);
+        if (!addon || !addon.is_active || addon.property_id !== propertyId) {
+            return { ok: false, error: "ADDON_NOT_FOUND" };
+        }
+
+        const lineTotal = addon.price * selection.quantity;
+        items.push({
+            addon_id: addon.id,
+            name: addon.name,
+            unit_price: addon.price,
+            quantity: selection.quantity,
+            line_total: lineTotal,
+        });
+        total += lineTotal;
+    }
+
+    return { ok: true, total, items };
+}
+
+export async function resolveAddonSelections(
+    supabase: SupabaseClient,
+    propertyId: string,
+    selections: AddonSelection[]
+): Promise<ResolveAddonsResult> {
+    const addonIds = selections.filter((s) => s.quantity > 0).map((s) => s.addon_id);
+    if (addonIds.length === 0) {
+        return { ok: true, total: 0, items: [] };
+    }
+
+    const { data, error } = await supabase
+        .from("addons")
+        .select("id, property_id, name, price, is_active")
+        .in("id", addonIds);
+
+    if (error) {
+        throw new Error(error.message);
+    }
+
+    return computeAddonSelections(selections, (data ?? []) as AddonRow[], propertyId);
+}
