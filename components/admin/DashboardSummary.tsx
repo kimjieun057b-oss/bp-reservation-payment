@@ -173,12 +173,12 @@ export default function DashboardSummary() {
                             ))}
                         </div>
                         <div className="flex items-center gap-4 mt-4 text-xs text-muted">
-                            <span className="inline-flex items-center gap-1.5">
+                            <div className="inline-flex items-center gap-1.5">
                                 <span className="w-2.5 h-2.5 rounded-sm bg-primary" /> 매출
-                            </span>
-                            <span className="inline-flex items-center gap-1.5">
+                            </div>
+                            <div className="inline-flex items-center gap-1.5">
                                 <span className="w-2.5 h-2.5 rounded-sm bg-red-300" /> 환불
-                            </span>
+                            </div>
                         </div>
                     </div>
                 </>

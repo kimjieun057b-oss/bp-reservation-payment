@@ -50,11 +50,22 @@ function RoomTypesIcon() {
     );
 }
 
+// 옵션 관리 아이콘 (태그/라벨)
+function AddonsIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8.5 1.5H13.5C14.0523 1.5 14.5 1.94772 14.5 2.5V7.5C14.5 7.78 14.39 8.05 14.19 8.24L8.24 14.19C7.85 14.58 7.22 14.58 6.83 14.19L1.81 9.17C1.42 8.78 1.42 8.15 1.81 7.76L7.76 1.81C7.95 1.61 8.22 1.5 8.5 1.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+            <circle cx="11" cy="5" r="1" fill="currentColor" />
+        </svg>
+    );
+}
+
 const ADMIN_NAV_ICONS: { [key: string]: () => React.ReactElement } = {
     dashboard: DashboardIcon,
     checkinout: CheckInOutIcon,
     reservations: ReservationsIcon,
     room_types: RoomTypesIcon,
+    addons: AddonsIcon,
 };
 
 export default function SideMenu() {
