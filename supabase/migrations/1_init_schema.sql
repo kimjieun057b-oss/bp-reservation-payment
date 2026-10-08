@@ -1,6 +1,7 @@
 -- 통합 스키마 (예약결제시스템_DB스키마_API설계.md 기준)
--- 원래 4개 파일(init_schema / rls_policies / add_room_blocking / add_reservation_checkinout)로 나뉘어 있던
--- 마이그레이션을 신규 프로젝트가 한 번에 적용할 수 있도록 하나로 통합한 버전.
+-- 원래 4개 파일(init_schema / rls_policies / add_room_blocking / add_reservation_checkinout)과,
+-- 이후 추가된 reservations.source 컬럼까지 전부 하나로 합쳤다.
+-- 옵션 상품(addons/reservation_addons)은 2_add_addons.sql에서 별도로 추가한다.
 -- 이중예약 방지를 위한 daterange + EXCLUDE 제약이 핵심이다.
 
 create extension if not exists pgcrypto;   -- gen_random_uuid()
@@ -82,6 +83,10 @@ create type reservation_status as enum (
   'EXPIRED'
 );
 
+-- 예약 유입 경로. ONLINE은 고객이 직접 실시간 결제한 경우, PHONE은 관리자가 전화로 받아
+-- 수동 등록한 경우(계좌이체 확인 후 수동 확정, payments.pg_provider='MANUAL'로 남는다).
+create type reservation_source as enum ('ONLINE', 'PHONE');
+
 -- checked_in_at/checked_out_at: 프런트 데스크 체크인/체크아웃 처리 시각. null이면 아직 처리 전.
 -- 체크아웃은 반드시 체크인 이후에만 유효하므로, 체크아웃이 찍혀 있는데 체크인이 비어있는 상태는 허용하지 않는다.
 create table reservations (
@@ -102,6 +107,7 @@ create table reservations (
   memo text,
 
   status reservation_status not null default 'HOLD',
+  source reservation_source not null default 'ONLINE',
   hold_expire_at timestamptz,
 
   total_price int not null,

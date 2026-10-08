@@ -148,7 +148,7 @@ export async function cancelReservation(
 
     const { data: payment, error: paymentError } = await supabaseAdmin
         .from("payments")
-        .select("id, order_id, amount, status")
+        .select("id, order_id, amount, status, pg_provider")
         .eq("reservation_id", reservationId)
         .eq("status", "PAID")
         .single();
@@ -174,7 +174,9 @@ export async function cancelReservation(
     }
 
     // PG 환불은 실제로 돈이 움직이므로 먼저 성공시킨 뒤 DB 상태를 반영한다.
-    if (refundAmount > 0) {
+    // pg_provider가 'MANUAL'(전화 예약 수동 확정)이면 실제 PG 거래가 없으므로 환불 API를 호출하지
+    // 않는다 - 금액/상태 기록만 남기고, 실제 송금은 관리자가 직접 처리한다.
+    if (refundAmount > 0 && payment.pg_provider !== "MANUAL") {
         await provider.refund({
             orderId: payment.order_id,
             amount: refundAmount,

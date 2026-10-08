@@ -3,6 +3,65 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { expireDueHolds } from "@/lib/reservations/expire";
+
+const SCHEDULE_COLUMNS = `
+    id,
+    guest_name,
+    guest_phone,
+    guest_count,
+    check_in,
+    check_out,
+    checked_in_at,
+    checked_out_at,
+    room_types ( name ),
+    rooms ( name )
+`;
+
+const PENDING_COLUMNS = `
+    id,
+    guest_name,
+    guest_phone,
+    check_in,
+    check_out,
+    total_price,
+    hold_expire_at,
+    source,
+    room_types ( name ),
+    rooms ( name )
+`;
+
+const UPCOMING_COLUMNS = `
+    id,
+    guest_name,
+    check_in,
+    check_out,
+    total_price,
+    room_types ( name ),
+    rooms ( name )
+`;
+
+const CANCEL_COLUMNS = `
+    id,
+    guest_name,
+    check_in,
+    check_out,
+    cancelled_at,
+    refund_amount,
+    cancel_reason,
+    room_types ( name )
+`;
+
+const NO_SHOW_COLUMNS = `
+    id,
+    guest_name,
+    guest_phone,
+    check_in,
+    check_out,
+    total_price,
+    room_types ( name ),
+    rooms ( name )
+`;
 
 const MONTH_PATTERN = /^\d{4}-\d{2}$/;
 const TREND_MONTHS = 6;
@@ -101,6 +160,14 @@ export async function GET(request: Request) {
     const rangeEndExclusive = addMonths(targetYear, targetMonth, 1);
     const rangeEndISO = kstMonthStartISO(rangeEndExclusive.year, rangeEndExclusive.month);
 
+    // 목록을 보기 전에 기한이 지난 HOLD를 먼저 정리해서 "확정 대기"에 이미 만료된 건이 섞이지 않게 한다
+    // (reservations/route.ts의 목록 조회 전 정리 패턴과 동일).
+    try {
+        await expireDueHolds();
+    } catch (err) {
+        console.error("[GET /api/admin/dashboard/summary] expireDueHolds failed", err);
+    }
+
     try {
         // FR-10: 오늘/이번주 예약 수 - 예약이 "접수된" 시점(created_at) 기준으로 세서,
         // 체크인 예정 건수가 아니라 실제 유입된 신규 예약 활동량을 보여준다(홀드/확정/취소 등 상태 무관 전체 건수).
@@ -109,6 +176,10 @@ export async function GET(request: Request) {
         const todayFrom = dateKey(today.year, today.month, today.day);
         const todayStartISO = kstDateStartISO(today.year, today.month, today.day);
         const todayEndISO = kstDateStartISO(tomorrow.year, tomorrow.month, tomorrow.day);
+
+        // 다가오는 7일 = 오늘 포함 7일(오늘 ~ 오늘+6일)의 체크인 예정 건.
+        const upcoming7End = addDays(today.year, today.month, today.day, 6);
+        const upcoming7To = dateKey(upcoming7End.year, upcoming7End.month, upcoming7End.day);
 
         // 이번주 = 월요일 시작 기준 (weekday: 0=일 ~ 6=토 -> 월요일로부터 지난 일수)
         const daysSinceMonday = (today.weekday + 6) % 7;
@@ -120,13 +191,19 @@ export async function GET(request: Request) {
         const weekStartISO = kstDateStartISO(weekStart.year, weekStart.month, weekStart.day);
         const weekEndISO = kstDateStartISO(weekEndExclusive.year, weekEndExclusive.month, weekEndExclusive.day);
 
-        // 아래 4개 쿼리는 서로 입력값(날짜 범위)만 다를 뿐 결과가 서로에게 의존하지 않으므로
-        // 순차 await 대신 Promise.all로 동시에 날려 왕복 지연을 4배 줄인다.
+        // 아래 쿼리들은 서로 입력값(날짜 범위/상태)만 다를 뿐 결과가 서로에게 의존하지 않으므로
+        // 순차 await 대신 Promise.all로 동시에 날려 왕복 지연을 줄인다.
         const [
             { data: payments, error: paymentsError },
             { data: refunds, error: refundsError },
             { count: todayCount, error: todayError },
             { count: weekCount, error: weekError },
+            { data: arrivals, error: arrivalsError },
+            { data: departures, error: departuresError },
+            { data: pendingHolds, error: pendingError },
+            { data: upcoming, error: upcomingError },
+            { data: recentCancellations, error: cancelError },
+            { data: noShowSuspects, error: noShowError },
         ] = await Promise.all([
             // 매출 = 결제 완료(+환불 처리됐더라도 결제 자체는 있었던) 금액을 결제일 기준으로 집계.
             supabaseAdmin
@@ -153,12 +230,63 @@ export async function GET(request: Request) {
                 .select("id", { count: "exact", head: true })
                 .gte("created_at", weekStartISO)
                 .lt("created_at", weekEndISO),
+            // 오늘 일정: 체크인/체크아웃 예정 (checkinout/route.ts와 동일한 컬럼 구성).
+            supabaseAdmin
+                .from("reservations")
+                .select(SCHEDULE_COLUMNS)
+                .eq("status", "CONFIRMED")
+                .eq("check_in", todayFrom)
+                .order("guest_name", { ascending: true }),
+            supabaseAdmin
+                .from("reservations")
+                .select(SCHEDULE_COLUMNS)
+                .eq("status", "CONFIRMED")
+                .eq("check_out", todayFrom)
+                .order("guest_name", { ascending: true }),
+            // 확정 대기: 결제대기(HOLD) 중인 예약, 만료 임박순.
+            supabaseAdmin
+                .from("reservations")
+                .select(PENDING_COLUMNS)
+                .eq("status", "HOLD")
+                .order("hold_expire_at", { ascending: true })
+                .limit(20),
+            // 다가오는 7일: 오늘부터 6일 후까지 체크인 예정인 확정 예약.
+            supabaseAdmin
+                .from("reservations")
+                .select(UPCOMING_COLUMNS)
+                .eq("status", "CONFIRMED")
+                .gte("check_in", todayFrom)
+                .lte("check_in", upcoming7To)
+                .order("check_in", { ascending: true })
+                .limit(30),
+            // 최근 취소/환불.
+            supabaseAdmin
+                .from("reservations")
+                .select(CANCEL_COLUMNS)
+                .eq("status", "CANCELLED")
+                .order("cancelled_at", { ascending: false })
+                .limit(10),
+            // 노쇼 의심: 체크인 예정일(자정) 지나도록 미체크인인 확정 예약.
+            supabaseAdmin
+                .from("reservations")
+                .select(NO_SHOW_COLUMNS)
+                .eq("status", "CONFIRMED")
+                .lt("check_in", todayFrom)
+                .is("checked_in_at", null)
+                .order("check_in", { ascending: true })
+                .limit(20),
         ]);
 
         if (paymentsError) throw new Error(paymentsError.message);
         if (refundsError) throw new Error(refundsError.message);
         if (todayError) throw new Error(todayError.message);
         if (weekError) throw new Error(weekError.message);
+        if (arrivalsError) throw new Error(arrivalsError.message);
+        if (departuresError) throw new Error(departuresError.message);
+        if (pendingError) throw new Error(pendingError.message);
+        if (upcomingError) throw new Error(upcomingError.message);
+        if (cancelError) throw new Error(cancelError.message);
+        if (noShowError) throw new Error(noShowError.message);
 
         const revenueByMonth = new Map<string, number>();
         for (const p of payments ?? []) {
@@ -192,6 +320,20 @@ export async function GET(request: Request) {
             trend,
             today: { count: todayCount ?? 0, date_from: todayFrom, date_to: todayFrom },
             thisWeek: { count: weekCount ?? 0, date_from: weekFrom, date_to: weekTo },
+            todaySchedule: {
+                date: todayFrom,
+                arrivals: arrivals ?? [],
+                departures: departures ?? [],
+            },
+            pendingConfirmation: pendingHolds ?? [],
+            upcoming7Days: {
+                date_from: todayFrom,
+                date_to: upcoming7To,
+                count: (upcoming ?? []).length,
+                items: upcoming ?? [],
+            },
+            recentCancellations: recentCancellations ?? [],
+            noShowSuspects: noShowSuspects ?? [],
         });
     } catch (err) {
         console.error("[GET /api/admin/dashboard/summary]", err);
