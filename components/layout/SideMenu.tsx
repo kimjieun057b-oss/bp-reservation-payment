@@ -79,7 +79,7 @@ const ADMIN_NAV_ICONS: { [key: string]: () => React.ReactElement } = {
     checkinout: CheckInOutIcon,
     reservations: ReservationsIcon,
     room_types: RoomTypesIcon,
-    options: OptionsIcon,
+    addons: OptionsIcon,
 };
 
 export default function SideMenu() {

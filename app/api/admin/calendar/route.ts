@@ -30,7 +30,7 @@ const RESERVATION_COLUMNS = `
     cancelled_at,
     room_types ( name ),
     rooms ( name ),
-    reservation_options ( name, price, quantity )
+    reservation_addons ( quantity, price, addons ( name ) )
 `;
 
 // GET /api/admin/reservations의 addDaysToDateStr와 동일한 KST 보정 방식(날짜 문자열 기준 +N일).

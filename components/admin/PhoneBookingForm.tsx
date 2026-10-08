@@ -17,7 +17,7 @@ interface AdminRoomType {
     is_active: boolean;
 }
 
-interface AddonOption {
+interface Addon {
     id: string;
     name: string;
     description: string | null;
@@ -43,10 +43,10 @@ export default function PhoneBookingForm() {
         [roomTypesData]
     );
 
-    const { data: addonOptionsData } = useFetch<{ addon_options: AddonOption[] }>("/api/admin/addon-options");
-    const activeAddonOptions = useMemo(
-        () => (addonOptionsData?.addon_options ?? []).filter((o) => o.is_active),
-        [addonOptionsData]
+    const { data: addonsData } = useFetch<{ addons: Addon[] }>("/api/admin/addons");
+    const activeAddons = useMemo(
+        () => (addonsData?.addons ?? []).filter((o) => o.is_active),
+        [addonsData]
     );
 
     const [roomTypeId, setRoomTypeId] = useState<string>("");
@@ -173,7 +173,7 @@ export default function PhoneBookingForm() {
         setOptionQuantities((prev) => ({ ...prev, [optionId]: Math.max(1, quantity) }));
     }, []);
 
-    const optionsTotal = activeAddonOptions.reduce((sum, option) => {
+    const optionsTotal = activeAddons.reduce((sum, option) => {
         const quantity = optionQuantities[option.id];
         return quantity ? sum + option.price * quantity : sum;
     }, 0);
@@ -232,8 +232,8 @@ export default function PhoneBookingForm() {
                 guest_count: guestCount,
                 memo: memo || undefined,
                 confirm_now: confirmNow,
-                addon_options: Object.entries(optionQuantities).map(([addon_option_id, quantity]) => ({
-                    addon_option_id,
+                addons: Object.entries(optionQuantities).map(([addon_id, quantity]) => ({
+                    addon_id,
                     quantity,
                 })),
             });
@@ -339,11 +339,11 @@ export default function PhoneBookingForm() {
                             placeholder="예) 보호자 동반, 오후 통화 선호"
                         />
                     </div>
-                    {activeAddonOptions.length > 0 && (
+                    {activeAddons.length > 0 && (
                         <div>
                             <label className="form-label">부가서비스/옵션</label>
                             <div className="space-y-1.5">
-                                {activeAddonOptions.map((option) => {
+                                {activeAddons.map((option) => {
                                     const checked = option.id in optionQuantities;
                                     return (
                                         <div key={option.id} className="flex items-center gap-2 text-sm text-body">

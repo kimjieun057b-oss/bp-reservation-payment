@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { calculateTotalPrice } from "./pricing";
+import { calculateTotalPrice, resolveAddonSelections, type AddonSelection } from "./pricing";
 import { expireDueHolds } from "./expire";
 import type { Reservation, ReservationSource } from "./types";
 
@@ -20,9 +20,10 @@ export interface CreateHoldInput {
     memo?: string;
     // 관리자 전화 예약 등록 경로에서만 "PHONE"을 넘긴다. 생략 시(고객용 경로) "ONLINE"으로 저장된다.
     source?: ReservationSource;
+    addons?: AddonSelection[];
 }
 
-export type CreateHoldError = "INVALID_DATES" | "ROOM_TYPE_NOT_FOUND" | "ROOM_UNAVAILABLE";
+export type CreateHoldError = "INVALID_DATES" | "ROOM_TYPE_NOT_FOUND" | "ROOM_UNAVAILABLE" | "ADDON_NOT_FOUND";
 
 export type CreateHoldResult =
     | { ok: true; reservation: Reservation }
@@ -56,12 +57,21 @@ export async function createHold(input: CreateHoldInput): Promise<CreateHoldResu
         return { ok: false, error: "ROOM_TYPE_NOT_FOUND" };
     }
 
-    const totalPrice = await calculateTotalPrice(
+    const roomTotalPrice = await calculateTotalPrice(
         supabaseAdmin,
         input.room_type_id,
         input.check_in,
         input.check_out
     );
+
+    // 옵션 검증은 방 배정 루프 이전에 끝낸다. 이렇게 하면 방 배정이 성공한 뒤의
+    // reservation_addons insert 실패는 입력 데이터 문제가 아닌 예외 상황으로 간주할 수 있다.
+    const addonsResult = await resolveAddonSelections(supabaseAdmin, roomType.property_id, input.addons ?? []);
+    if (!addonsResult.ok) {
+        return { ok: false, error: addonsResult.error };
+    }
+
+    const totalPrice = roomTotalPrice + addonsResult.total;
 
     const { data: rooms, error: roomsError } = await supabaseAdmin
         .from("rooms")
@@ -107,6 +117,19 @@ export async function createHold(input: CreateHoldInput): Promise<CreateHoldResu
             .single();
 
         if (!error && data) {
+            if (addonsResult.items.length > 0) {
+                const { error: addonsInsertError } = await supabaseAdmin.from("reservation_addons").insert(
+                    addonsResult.items.map((item) => ({
+                        reservation_id: data.id,
+                        addon_id: item.addon_id,
+                        quantity: item.quantity,
+                        price: item.unit_price,
+                    }))
+                );
+                if (addonsInsertError) {
+                    throw new Error(addonsInsertError.message);
+                }
+            }
             return { ok: true, reservation: data as Reservation };
         }
 

@@ -1,6 +1,7 @@
 -- 통합 스키마 (예약결제시스템_DB스키마_API설계.md 기준)
 -- 원래 4개 파일(init_schema / rls_policies / add_room_blocking / add_reservation_checkinout)과,
--- 이후 추가된 단계별 변경(reservations.source, addon_options, reservation_options)까지 전부
+-- 이후 추가된 reservations.source 컬럼까지 전부 하나로 합쳤다.
+-- 옵션 상품(addons/reservation_addons)은 2_add_addons.sql에서 별도로 추가한다.
 -- 이중예약 방지를 위한 daterange + EXCLUDE 제약이 핵심이다.
 
 create extension if not exists pgcrypto;   -- gen_random_uuid()
@@ -190,35 +191,6 @@ create table admin_users (
   created_at timestamptz not null default now()
 );
 
--- 2-11. addon_options (부가서비스/옵션 카탈로그: 바베큐, 조식, 웰컴패키지 등)
--- 객실 타입과 무관하게 숙소 전체에 공통으로 적용된다. 예약과의 연결은 reservation_options가 담당.
-create table addon_options (
-  id uuid primary key default gen_random_uuid(),
-  property_id uuid not null references properties(id) on delete cascade,
-  name text not null,
-  description text,
-  price int not null default 0,
-  is_active boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
--- 2-12. reservation_options (예약에 붙인 부가서비스/옵션)
--- name/price는 선택 시점 스냅샷이라, 이후 addon_options에서 가격이 바뀌거나(수정) 삭제돼도
--- 이미 확정된 예약의 금액 근거는 변하지 않는다. addon_option_id는 on delete set null이라
--- 카탈로그에서 옵션을 삭제해도 과거 예약의 옵션 내역/금액은 그대로 남는다.
-create table reservation_options (
-  id uuid primary key default gen_random_uuid(),
-  reservation_id uuid not null references reservations(id) on delete cascade,
-  addon_option_id uuid references addon_options(id) on delete set null,
-  name text not null,
-  price int not null,
-  quantity int not null default 1,
-  created_at timestamptz not null default now()
-);
-
-create index idx_reservation_options_reservation on reservation_options (reservation_id);
-
 -- ---------------------------------------------------------------------------
 -- RLS: 관리자는 자신이 속한 property 데이터만 접근 가능.
 -- 고객용 예약/결제 흐름은 서버 Route Handler가 service role 키로 처리하므로 RLS를 우회한다
@@ -244,8 +216,6 @@ alter table payments enable row level security;
 alter table refund_policies enable row level security;
 alter table notification_logs enable row level security;
 alter table admin_users enable row level security;
-alter table addon_options enable row level security;
-alter table reservation_options enable row level security;
 
 create policy "admin reads own row" on admin_users
   for select using (id = auth.uid());
@@ -278,14 +248,6 @@ create policy "admin reads own payments" on payments
   );
 
 create policy "admin reads own notification_logs" on notification_logs
-  for all using (
-    reservation_id in (select id from reservations where property_id = admin_property_id())
-  );
-
-create policy "admin manages own addon_options" on addon_options
-  for all using (property_id = admin_property_id());
-
-create policy "admin manages own reservation_options" on reservation_options
   for all using (
     reservation_id in (select id from reservations where property_id = admin_property_id())
   );

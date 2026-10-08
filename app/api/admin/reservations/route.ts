@@ -9,7 +9,7 @@ import type { ReservationStatus } from "@/lib/reservations/types";
 import { expireDueHolds } from "@/lib/reservations/expire";
 import { createHold, type CreateHoldError } from "@/lib/reservations/hold";
 import { confirmPhoneBooking } from "@/lib/reservations/phoneBooking";
-import { attachAddonOptions, type AddonSelection } from "@/lib/reservations/options";
+import type { AddonSelection } from "@/lib/reservations/pricing";
 
 const VALID_STATUSES: ReservationStatus[] = ["HOLD", "CONFIRMED", "CANCELLED", "EXPIRED"];
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -22,13 +22,28 @@ const HOLD_ERROR_STATUS: Record<CreateHoldError, number> = {
     INVALID_DATES: 400,
     ROOM_TYPE_NOT_FOUND: 404,
     ROOM_UNAVAILABLE: 409,
+    ADDON_NOT_FOUND: 404,
 };
 
 const HOLD_ERROR_MESSAGE: Record<CreateHoldError, string> = {
     INVALID_DATES: "체크아웃 날짜는 체크인 날짜보다 이후여야 합니다.",
     ROOM_TYPE_NOT_FOUND: "존재하지 않거나 비활성화된 객실 타입입니다.",
     ROOM_UNAVAILABLE: "선택하신 날짜는 이미 예약이 진행 중입니다.",
+    ADDON_NOT_FOUND: "존재하지 않거나 비활성화된 옵션입니다.",
 };
+
+interface RawAddonSelection {
+    addon_id?: unknown;
+    quantity?: unknown;
+}
+
+// 고객용 POST /api/reservations/hold/route.ts의 parseAddons와 동일한 파싱 규칙.
+function parseAddons(raw: unknown): AddonSelection[] {
+    if (!Array.isArray(raw)) return [];
+    return (raw as RawAddonSelection[])
+        .filter((item) => typeof item?.addon_id === "string" && typeof item?.quantity === "number")
+        .map((item) => ({ addon_id: item.addon_id as string, quantity: item.quantity as number }));
+}
 
 // PostgREST의 .or() 필터 문법은 쉼표/괄호를 절 구분자로 쓰므로, 키워드에 포함돼 있으면
 // 걷어내서 검색어가 필터 구문으로 해석되는 걸 막는다.
@@ -117,7 +132,8 @@ export async function GET(request: Request) {
                 created_at,
                 room_types ( name ),
                 rooms ( name ),
-                properties ( name )
+                properties ( name ),
+                reservation_addons ( quantity, price, addons ( name ) )
             `, { count: "exact" })
             .order("created_at", { ascending: false });
 
@@ -174,12 +190,7 @@ export async function POST(request: Request) {
 
     const { room_type_id, check_in, check_out, guest_name, guest_phone, guest_email, guest_count, memo, confirm_now } =
         body as Record<string, string | number | boolean | undefined>;
-    const addonOptionsInput = Array.isArray(body?.addon_options)
-        ? (body.addon_options as unknown[]).filter(
-              (o): o is AddonSelection =>
-                  typeof o === "object" && o !== null && typeof (o as AddonSelection).addon_option_id === "string"
-          ).map((o) => ({ addon_option_id: o.addon_option_id, quantity: Number(o.quantity) || 1 }))
-        : [];
+    const addons = parseAddons(body?.addons);
 
     if (!room_type_id || !check_in || !check_out || !guest_name || !guest_phone) {
         return NextResponse.json({ error: "MISSING_FIELDS", message: "필수 항목이 누락되었습니다." }, { status: 400 });
@@ -196,6 +207,7 @@ export async function POST(request: Request) {
             guest_count: guest_count ? Number(guest_count) : undefined,
             memo: memo ? String(memo) : undefined,
             source: "PHONE",
+            addons,
         });
 
         if (!result.ok) {
@@ -204,8 +216,6 @@ export async function POST(request: Request) {
                 { status: HOLD_ERROR_STATUS[result.error] }
             );
         }
-
-        const optionsTotal = await attachAddonOptions(result.reservation.id, addonOptionsInput);
 
         let status: "HOLD" | "CONFIRMED" = "HOLD";
         if (confirm_now === true) {
@@ -217,7 +227,7 @@ export async function POST(request: Request) {
             {
                 reservation_id: result.reservation.id,
                 status,
-                total_price: result.reservation.total_price + optionsTotal,
+                total_price: result.reservation.total_price,
                 hold_expire_at: status === "CONFIRMED" ? null : result.reservation.hold_expire_at,
             },
             { status: 201 }

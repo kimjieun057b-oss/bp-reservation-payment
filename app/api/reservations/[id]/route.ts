@@ -8,7 +8,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { data: reservation, error } = await supabaseAdmin
         .from("reservations")
         .select(
-            "id, status, check_in, check_out, guest_name, guest_count, total_price, hold_expire_at, refund_amount, room_type_id, room_types(name), rooms(name)"
+            "id, status, check_in, check_out, guest_name, guest_count, total_price, hold_expire_at, refund_amount, room_type_id, room_types(name), rooms(name), reservation_addons(quantity, price, addons(name))"
         )
         .eq("id", id)
         .single();

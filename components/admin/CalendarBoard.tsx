@@ -37,7 +37,7 @@ interface CalendarReservation {
     cancelled_at: string | null;
     room_types: { name: string } | null;
     rooms: { name: string } | null;
-    reservation_options: { name: string; price: number; quantity: number }[];
+    reservation_addons: { quantity: number; price: number; addons: { name: string } | null }[];
 }
 
 interface CalendarResponse {
@@ -361,11 +361,11 @@ export default function CalendarBoard() {
                                     <span className="text-muted">금액</span>
                                     <span>{formatWon(selected.total_price)}</span>
                                 </div>
-                                {selected.reservation_options.length > 0 && (
+                                {selected.reservation_addons.length > 0 && (
                                     <div className="pl-3 space-y-1 text-xs text-muted">
-                                        {selected.reservation_options.map((opt, idx) => (
+                                        {selected.reservation_addons.map((opt, idx) => (
                                             <div key={idx} className="flex justify-between">
-                                                <span>{opt.name} × {opt.quantity}</span>
+                                                <span>{opt.addons?.name ?? "옵션"} × {opt.quantity}</span>
                                                 <span>{formatWon(opt.price * opt.quantity)}</span>
                                             </div>
                                         ))}
