@@ -26,6 +26,19 @@ function CheckInOutIcon() {
     );
 }
 
+// 예약 캘린더 아이콘 (객실×날짜 그리드)
+function CalendarGridIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="1.5" y="1.5" width="13" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M1.5 6H14.5" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M6 1.5V14.5" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M10.5 1.5V14.5" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M1.5 10.5H14.5" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+    );
+}
+
 // 예약 관리 아이콘 (캘린더)
 function ReservationsIcon() {
     return (
@@ -50,11 +63,23 @@ function RoomTypesIcon() {
     );
 }
 
+// 부가서비스/옵션 아이콘 (태그)
+function OptionsIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8.5 1.5H13.5C14.0523 1.5 14.5 1.94772 14.5 2.5V7.5C14.5 7.76522 14.3946 8.01957 14.2071 8.20711L8.20711 14.2071C7.81658 14.5976 7.18342 14.5976 6.79289 14.2071L1.79289 9.20711C1.40237 8.81658 1.40237 8.18342 1.79289 7.79289L7.79289 1.79289C7.98043 1.60536 8.23478 1.5 8.5 1.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+            <circle cx="11" cy="5" r="1" fill="currentColor" />
+        </svg>
+    );
+}
+
 const ADMIN_NAV_ICONS: { [key: string]: () => React.ReactElement } = {
     dashboard: DashboardIcon,
+    calendar: CalendarGridIcon,
     checkinout: CheckInOutIcon,
     reservations: ReservationsIcon,
     room_types: RoomTypesIcon,
+    options: OptionsIcon,
 };
 
 export default function SideMenu() {

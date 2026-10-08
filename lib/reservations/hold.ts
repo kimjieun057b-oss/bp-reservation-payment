@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { calculateTotalPrice } from "./pricing";
 import { expireDueHolds } from "./expire";
-import type { Reservation } from "./types";
+import type { Reservation, ReservationSource } from "./types";
 
 // FR-2: 홀드 유지시간은 프로젝트별 환경설정 값으로 변경 가능해야 한다 (기본 24시간, DEC-001).
 const HOLD_DURATION_MINUTES = Number(process.env.RESERVATION_HOLD_MINUTES ?? 60 * 24);
@@ -18,6 +18,8 @@ export interface CreateHoldInput {
     guest_email?: string;
     guest_count?: number;
     memo?: string;
+    // 관리자 전화 예약 등록 경로에서만 "PHONE"을 넘긴다. 생략 시(고객용 경로) "ONLINE"으로 저장된다.
+    source?: ReservationSource;
 }
 
 export type CreateHoldError = "INVALID_DATES" | "ROOM_TYPE_NOT_FOUND" | "ROOM_UNAVAILABLE";
@@ -97,6 +99,7 @@ export async function createHold(input: CreateHoldInput): Promise<CreateHoldResu
                 guest_count: input.guest_count ?? 1,
                 memo: input.memo ?? null,
                 status: "HOLD",
+                source: input.source ?? "ONLINE",
                 hold_expire_at: holdExpireAt,
                 total_price: totalPrice,
             })

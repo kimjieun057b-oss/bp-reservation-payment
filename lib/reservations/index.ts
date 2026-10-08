@@ -7,3 +7,5 @@ export * from "./expire";
 export * from "./cancel";
 export * from "./payment";
 export * from "./checkinout";
+export * from "./phoneBooking";
+export * from "./options";

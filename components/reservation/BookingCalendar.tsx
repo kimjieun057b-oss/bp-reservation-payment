@@ -11,17 +11,10 @@ import { enumerateNights, toISODate } from "@/lib/reservations/pricing";
 import type { RefundPolicyTier } from "@/lib/reservations/refund";
 import Toast from "@/components/ui/Toast";
 import { formatWon } from "@/lib/formatCurrency";
+import CalendarGrid, { type DayInfo } from "@/components/reservation/CalendarGrid";
 
 export interface BookingCalendarProps {
     roomTypeId?: string;
-}
-
-interface DayInfo {
-    date: string;
-    available: boolean;
-    isPeak: boolean;
-    isWeekend: boolean;
-    price: number;
 }
 
 interface RoomTypeInfo {
@@ -38,8 +31,6 @@ interface AvailabilityResponse {
     days: DayInfo[];
     refund_policies: RefundPolicyTier[];
 }
-
-const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
 function monthKeyOf(year: number, month: number): string {
     return `${year}-${String(month).padStart(2, "0")}`;
@@ -275,12 +266,6 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
         }
     }
 
-    // 달력 그리드: 이번 달 1일의 요일만큼 빈 칸을 채우고, 말일까지 채운다.
-    const firstWeekday = new Date(Date.UTC(viewYear, viewMonth - 1, 1)).getUTCDay();
-    const daysInMonth = new Date(Date.UTC(viewYear, viewMonth, 0)).getUTCDate();
-    const leadingBlanks = Array.from({ length: firstWeekday }, (_, i) => i);
-    const dateCells = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-
     return (
         <>
         <div className="flex flex-col pc:flex-row gap-6">
@@ -314,58 +299,15 @@ export default function BookingCalendar({ roomTypeId }: BookingCalendarProps) {
                         </div>
                     )}
 
-                    <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted mb-2">
-                        {WEEKDAY_LABELS.map((label, i) => (
-                            <div key={label} className={i === 0 ? "text-red-500" : i === 6 ? "text-primary" : undefined}>
-                                {label}
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="grid grid-cols-7 gap-1">
-                        {leadingBlanks.map((i) => (
-                            <div key={`blank-${i}`} />
-                        ))}
-
-                        {dateCells.map((date) => {
-                            const iso = `${viewYear}-${String(viewMonth).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
-                            const day = currentDays?.find((d) => d.date === iso);
-                            const isPast = iso < todayISO;
-                            const isSelectedStart = iso === checkIn;
-                            const isSelectedEnd = iso === checkOut;
-                            const isInRange = !!checkIn && !!checkOut && iso > checkIn && iso < checkOut;
-                            // FR-1 AC3: 예약 마감(재고 소진)은 과거 날짜와 구분해 "마감" 배지로 명확히 표시한다.
-                            const isSoldOut = !isPast && !!day && !day.available;
-                            const disabled = isPast || !day || !day.available;
-
-                            return (
-                                <button
-                                    key={iso}
-                                    type="button"
-                                    disabled={disabled}
-                                    aria-disabled={disabled}
-                                    aria-label={isSoldOut ? `${date}일, 마감` : undefined}
-                                    onClick={() => day && handleDateClick(day)}
-                                    className={`relative aspect-square rounded-lg text-sm flex flex-col items-center justify-center gap-0.5 transition-colors
-                                        ${disabled ? "text-muted/50 cursor-not-allowed" : "cursor-pointer hover:bg-surface"}
-                                        ${isSoldOut ? "bg-gray-100" : ""}
-                                        ${isSelectedStart || isSelectedEnd ? "bg-primary text-white hover:bg-primary" : ""}
-                                        ${isInRange ? "bg-primary/15" : ""}`}
-                                >
-                                    <span>{date}</span>
-                                    {isSoldOut ? (
-                                        <span className="text-[9px] leading-none text-muted font-medium">마감</span>
-                                    ) : (
-                                        (day?.isPeak || day?.isWeekend) && !disabled && !isSelectedStart && !isSelectedEnd && (
-                                            <span className="text-[9px] leading-none text-primary">
-                                                {day?.isPeak ? "성" : "주"}
-                                            </span>
-                                        )
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
+                    <CalendarGrid
+                        viewYear={viewYear}
+                        viewMonth={viewMonth}
+                        days={currentDays}
+                        todayISO={todayISO}
+                        checkIn={checkIn}
+                        checkOut={checkOut}
+                        onDateClick={handleDateClick}
+                    />
                 </div>
 
                 {needsRoomTypeSelection && (

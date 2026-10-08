@@ -1,4 +1,5 @@
 export type ReservationStatus = "HOLD" | "CONFIRMED" | "CANCELLED" | "EXPIRED";
+export type ReservationSource = "ONLINE" | "PHONE";
 
 export interface Reservation {
     id: string;
@@ -13,6 +14,7 @@ export interface Reservation {
     guest_count: number;
     memo: string | null;
     status: ReservationStatus;
+    source: ReservationSource;
     hold_expire_at: string | null;
     total_price: number;
     cancelled_at: string | null;
